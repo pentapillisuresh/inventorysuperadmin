@@ -2,20 +2,15 @@ import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
-  UserPlus, 
   UserCog,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  FileText,
-  Shield,
-  TrendingUp,
-  Settings
+  Shield
 } from 'lucide-react';
 
 const Sidebar = ({ activeView, setActiveView, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState(null);
 
   const menuItems = [
     {
@@ -30,46 +25,15 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
       icon: <Users className="h-5 w-5" />,
       view: 'admin-management'
     },
-     {
-    id: 'manager-management',
-    label: 'Manager Management',
-    icon: <UserCog className="h-5 w-5" />,
-    view: 'manager-management'
-  },
     {
-      id: 'admin-creation',
-      label: 'Admin Creation',
+      id: 'manager-management',
+      label: 'Manager Management',
       icon: <UserCog className="h-5 w-5" />,
-      submenu: [
-        {
-          id: 'create-admin',
-          label: 'Create New Admin',
-          icon: <UserPlus className="h-4 w-4" />,
-          view: 'create-admin'
-        },
-        {
-          id: 'create-manager',
-          label: 'Create Manager',
-          icon: <UserPlus className="h-4 w-4" />,
-          view: 'create-manager'
-        }
-      ]
+      view: 'manager-management'
     },
-    {
-      id: 'monitoring',
-      label: 'Plan Monitoring',
-      icon: <TrendingUp className="h-5 w-5" />,
-      view: 'admin-management'
-    },
-    // {
-    //   id: 'audit',
-    //   label: 'Audit Logs',
-    //   icon: <FileText className="h-5 w-5" />,
-    //   view: 'audit-logs'
-    // },
     {
       id: 'security',
-      label: 'Security',
+      label: 'Profile',
       icon: <Shield className="h-5 w-5" />,
       view: 'security'
     }
@@ -78,14 +42,7 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
   const handleItemClick = (item) => {
     if (item.view) {
       setActiveView(item.view);
-      setActiveSubmenu(null);
-    } else if (item.submenu) {
-      setActiveSubmenu(activeSubmenu === item.id ? null : item.id);
     }
-  };
-
-  const handleSubmenuClick = (subItem) => {
-    setActiveView(subItem.view);
   };
 
   return (
@@ -132,7 +89,7 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
               <button
                 onClick={() => handleItemClick(item)}
                 className={`w-full flex items-center ${collapsed ? 'justify-center px-3' : 'px-4'} py-3 rounded-lg mb-1 transition-colors ${
-                  activeView === item.view || activeSubmenu === item.id
+                  activeView === item.view
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                 }`}
@@ -141,32 +98,7 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
                 {!collapsed && (
                   <span className="ml-3 flex-1 text-left font-medium">{item.label}</span>
                 )}
-                {!collapsed && item.submenu && (
-                  <ChevronRight className={`h-4 w-4 transition-transform ${
-                    activeSubmenu === item.id ? 'rotate-90' : ''
-                  }`} />
-                )}
               </button>
-              
-              {/* Submenu */}
-              {!collapsed && item.submenu && activeSubmenu === item.id && (
-                <div className="ml-10 mt-1 mb-2 space-y-1">
-                  {item.submenu.map((subItem) => (
-                    <button
-                      key={subItem.id}
-                      onClick={() => handleSubmenuClick(subItem)}
-                      className={`w-full flex items-center px-4 py-2.5 rounded-lg text-sm transition-colors ${
-                        activeView === subItem.view
-                          ? 'bg-blue-900 text-blue-100'
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-gray-300'
-                      }`}
-                    >
-                      <span className="mr-3">{subItem.icon}</span>
-                      {subItem.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           ))}
         </nav>
@@ -174,8 +106,6 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
 
       {/* Sidebar Footer */}
       <div className="border-t border-gray-800 p-4">
-      
-
         {/* Bottom Menu - Only Logout */}
         <div className="space-y-1">
           <button
@@ -187,7 +117,6 @@ const Sidebar = ({ activeView, setActiveView, onLogout }) => {
           </button>
         </div>
 
-      
         {/* Version */}
         {!collapsed && (
           <div className="mt-4 px-4">

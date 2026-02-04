@@ -227,54 +227,7 @@ const SecuritySettings = () => {
         </form>
       </div>
 
-      {/* Security Settings */}
-      <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">Security Features</h2>
-          <p className="text-sm text-gray-600 mt-1">Configure platform security settings</p>
-        </div>
-        
-        <div className="divide-y divide-gray-200">
-          {securitySettings.map((setting) => (
-            <div key={setting.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
-              <div>
-                <h3 className="font-medium text-gray-900">{setting.label}</h3>
-                <p className="text-sm text-gray-600 mt-1">{setting.description}</p>
-                <p className="text-sm text-gray-500 mt-1">Current: {setting.value}</p>
-              </div>
-              <button
-                onClick={() => toggleSetting(setting.id)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                  setting.enabled ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    setting.enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Security Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-        <div className="flex">
-          <Shield className="h-6 w-6 text-blue-600 flex-shrink-0" />
-          <div className="ml-4">
-            <h3 className="font-semibold text-blue-900">Security Best Practices</h3>
-            <ul className="mt-2 text-sm text-blue-800 space-y-2">
-              <li>• Change your password every 90 days</li>
-              <li>• Enable two-factor authentication for additional security</li>
-              <li>• Regularly review audit logs for suspicious activity</li>
-              <li>• Never share your credentials with anyone</li>
-              <li>• Logout from shared computers immediately</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+    
     </div>
   );
 };

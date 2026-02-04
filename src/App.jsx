@@ -79,7 +79,7 @@ function App() {
           />
         );
       case 'manager-management':
-        return <ManagerManagement />;
+        return <ManagerManagement setCurrentView={setCurrentView} />;
       case 'create-manager':
         return <CreateManager setCurrentView={setCurrentView} />;
       case 'audit-logs':

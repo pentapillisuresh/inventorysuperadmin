@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Eye, Edit, Trash2, User, Phone, Mail, Building, Calendar, Shield } from 'lucide-react';
+import { Search, Eye, Edit, Trash2, User, Phone, Mail, Building, Calendar, Shield, Plus } from 'lucide-react';
 import ManagerDetailsPopup from './ManagerDetailsPopup';
 
-const ManagerManagement = () => {
+const ManagerManagement = ({ setCurrentView }) => {
   const [managers, setManagers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredManagers, setFilteredManagers] = useState([]);
@@ -30,7 +30,10 @@ const ManagerManagement = () => {
       return {
         ...manager,
         adminBusiness: admin?.businessName || 'Unknown',
-        adminPlan: admin?.planType || 'Unknown'
+        adminPlan: admin?.planType || 'Unknown',
+        profileImage: manager.profileImage || '',
+        storeLogo: manager.storeLogo || '',
+        sidebarType: manager.sidebarType || 'standard'
       };
     });
     
@@ -136,6 +139,10 @@ const ManagerManagement = () => {
     }
   };
 
+  const handleCreateManager = () => {
+    setCurrentView('create-manager');
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -144,6 +151,13 @@ const ManagerManagement = () => {
           <h1 className="text-2xl font-bold text-gray-900">Manager Management</h1>
           <p className="text-gray-600 mt-1">Manage all business managers across the platform</p>
         </div>
+        <button
+          onClick={handleCreateManager}
+          className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+        >
+          <Plus className="h-5 w-5 mr-2" />
+          Create Manager
+        </button>
       </div>
 
       {/* Filters and Search */}
@@ -238,9 +252,11 @@ const ManagerManagement = () => {
 
       {/* Managers Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h2 className="font-semibold text-gray-900">All Managers</h2>
-          <p className="text-sm text-gray-600 mt-1">{filteredManagers.length} managers found</p>
+        <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+          <div>
+            <h2 className="font-semibold text-gray-900">All Managers</h2>
+            <p className="text-sm text-gray-600 mt-1">{filteredManagers.length} managers found</p>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -275,8 +291,18 @@ const ManagerManagement = () => {
                 <tr key={manager.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                        <User className="h-5 w-5 text-blue-600" />
+                      <div className="w-10 h-10 rounded-full overflow-hidden mr-3">
+                        {manager.profileImage ? (
+                          <img
+                            src={manager.profileImage}
+                            alt={manager.managerName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                            <User className="h-5 w-5 text-blue-600" />
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="font-medium text-gray-900">{manager.managerName}</div>
@@ -285,8 +311,25 @@ const ManagerManagement = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{manager.adminBusiness}</div>
-                    <div className="text-sm text-gray-500">{manager.adminPlan} Plan</div>
+                    <div className="flex items-center">
+                      <div className="w-8 h-8 rounded overflow-hidden mr-2">
+                        {manager.storeLogo ? (
+                          <img
+                            src={manager.storeLogo}
+                            alt={manager.adminBusiness}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+                            <Building className="h-4 w-4 text-amber-600" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">{manager.adminBusiness}</div>
+                        <div className="text-sm text-gray-500">{manager.adminPlan} Plan</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{manager.storeName}</div>
@@ -352,10 +395,18 @@ const ManagerManagement = () => {
           <div className="text-center py-12">
             <User className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <div className="text-gray-500">No managers found</div>
-            {filterAdmin !== 'all' && (
+            {filterAdmin !== 'all' ? (
               <p className="text-sm text-gray-400 mt-2">
                 Try changing your filters or create a new manager
               </p>
+            ) : (
+              <button
+                onClick={handleCreateManager}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center mx-auto"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Manager
+              </button>
             )}
           </div>
         )}
