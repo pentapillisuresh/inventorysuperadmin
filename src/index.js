@@ -6,8 +6,8 @@ import { initializeDummyData, updateAdminDaysRemaining } from './utils/initialDa
 import { setupSessionTimeout } from './utils/auth';
 
 // Initialize dummy data
-initializeDummyData();
-updateAdminDaysRemaining();
+// initializeDummyData();
+// updateAdminDaysRemaining();
 
 // Setup session timeout check
 setupSessionTimeout(() => {

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import ApiService from '../utils/ApiService';
+import { saveUserData } from '../utils/localStorage';
 
 const Login = ({ onLogin }) => {
   const [credentials, setCredentials] = useState({
@@ -10,11 +12,6 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const superAdminCredentials = {
-    username: 'superadmin',
-    password: 'Admin@123'
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setCredentials(prev => ({
@@ -24,27 +21,45 @@ const Login = ({ onLogin }) => {
     setError('');
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setLoading(true);
     setError('');
-
     // Simulate API call delay
-    setTimeout(() => {
-      if (credentials.username === superAdminCredentials.username && 
-          credentials.password === superAdminCredentials.password) {
-        
-        // Store login state in localStorage
-        localStorage.setItem('superAdminLoggedIn', 'true');
-        localStorage.setItem('superAdminUsername', credentials.username);
-        localStorage.setItem('superAdminLoginTime', new Date().toISOString());
-        
-        onLogin(); // Navigate to dashboard
-      } else {
-        setError('Invalid username or password');
+      const loginPayload = {
+        email: credentials.username,
+        password: credentials.password
       }
-      setLoading(false);
-    }, 1000);
+      try {
+        const response = await ApiService.post('/auth/login', loginPayload, {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+        });
+
+        if (!response) {
+          throw new Error(response.message || 'Login failed');
+        }
+
+        // ✅ Store token & user in localStorage
+        await saveUserData(response.user, response.token)
+
+        // Optional callback
+        localStorage.setItem('superAdminLoggedIn', 'true');
+        localStorage.setItem('superAdminUsername', credentials.name);
+        localStorage.setItem('superAdminLoginTime', new Date().toISOString());
+
+        if (onLogin) onLogin(response.user);
+
+        // Redirect
+        navigate('/dashboard');
+
+      } catch (err) {
+        setError(err.message || 'Invalid email or password');
+      } finally {
+        setLoading(false);
+      }
+   
+    setLoading(false);
   };
 
   return (
@@ -52,7 +67,7 @@ const Login = ({ onLogin }) => {
       {/* Left Side - Background Image */}
       <div className="hidden lg:flex lg:w-1/2 relative">
         {/* Background Image */}
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
             backgroundImage: 'url(https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80)'
@@ -61,7 +76,7 @@ const Login = ({ onLogin }) => {
           {/* Dark overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-indigo-900/70"></div>
         </div>
-        
+
         {/* Simple Text Overlay */}
         <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-white">
           <div className="text-center">
@@ -95,7 +110,7 @@ const Login = ({ onLogin }) => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form className="space-y-6">
               {/* Username Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -151,31 +166,11 @@ const Login = ({ onLogin }) => {
                 </div>
               </div>
 
-              {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="remember"
-                    className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor="remember" className="ml-2 text-sm text-gray-700">
-                    Remember me
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => alert('Please contact system administrator for password reset.')}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  Forgot password?
-                </button>
-              </div>
-
               {/* Login Button */}
               <button
-                type="submit"
+                type="button"
                 disabled={loading}
+                onClick={() => handleSubmit()}
                 className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-4 focus:ring-blue-300 disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 {loading ? (
@@ -188,29 +183,7 @@ const Login = ({ onLogin }) => {
                 )}
               </button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <div className="text-sm text-gray-600">
-                <p className="font-medium mb-2">Demo Credentials:</p>
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="font-mono text-sm">
-                    <span className="text-gray-500">Username:</span> superadmin
-                  </p>
-                  <p className="font-mono text-sm">
-                    <span className="text-gray-500">Password:</span> Admin@123
-                  </p>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  Use these credentials for testing the application
-                </p>
-              </div>
-            </div>
-
-           
           </div>
-
-       
         </div>
       </div>
     </div>

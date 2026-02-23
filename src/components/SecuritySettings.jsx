@@ -81,48 +81,6 @@ const SecuritySettings = () => {
         <p className="text-gray-600 mt-1">Manage platform security and access controls</p>
       </div>
 
-      {/* Security Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl border">
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-green-100 rounded-lg">
-              <Shield className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <h3 className="font-semibold text-gray-900">Security Score</h3>
-              <p className="text-3xl font-bold text-green-600">85/100</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">Good - Keep improving security measures</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl border">
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Lock className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <h3 className="font-semibold text-gray-900">Last Password Change</h3>
-              <p className="text-lg font-bold text-gray-900">30 days ago</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">Recommended to change every 90 days</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl border">
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-amber-100 rounded-lg">
-              <AlertTriangle className="h-6 w-6 text-amber-600" />
-            </div>
-            <div className="ml-4">
-              <h3 className="font-semibold text-gray-900">Failed Logins</h3>
-              <p className="text-lg font-bold text-gray-900">3 attempts</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">In the last 24 hours</p>
-        </div>
-      </div>
-
       {/* Change Password */}
       <div className="bg-white rounded-xl border p-6">
         <div className="flex items-center mb-6">

@@ -24,8 +24,8 @@ function App() {
 
   useEffect(() => {
     // Initialize dummy data
-    initializeDummyData();
-    updateAdminDaysRemaining();
+    // initializeDummyData();
+    // updateAdminDaysRemaining();
 
     // Check if user is already logged in
     const loggedIn = localStorage.getItem('superAdminLoggedIn') === 'true';
@@ -79,9 +79,18 @@ function App() {
           />
         );
       case 'manager-management':
+<<<<<<< HEAD
         return <ManagerManagement setCurrentView={setCurrentView} />;
+=======
+        return <ManagerManagement 
+        setCurrentView={setCurrentView}
+      />;
+>>>>>>> 5717b7b (rrr)
       case 'create-manager':
-        return <CreateManager setCurrentView={setCurrentView} />;
+        return <CreateManager setCurrentView={setCurrentView} 
+        editMode={currentView.editMode || false}
+        managerToEdit={currentView.managerToEdit || null}
+/>;
       case 'audit-logs':
         return <AuditLogs />;
       case 'security':

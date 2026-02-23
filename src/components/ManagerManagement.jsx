@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Eye, Edit, Trash2, User, Phone, Mail, Building, Calendar, Shield, Plus } from 'lucide-react';
 import ManagerDetailsPopup from './ManagerDetailsPopup';
+import ApiService from '../utils/ApiService';
 
 const ManagerManagement = ({ setCurrentView }) => {
   const [managers, setManagers] = useState([]);
@@ -11,8 +12,15 @@ const ManagerManagement = ({ setCurrentView }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [managerToDelete, setManagerToDelete] = useState(null);
   const [filterAdmin, setFilterAdmin] = useState('all');
+  const [admins, setAdmins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Get current super admin ID from localStorage or context
+  const currentUserId = JSON.parse(localStorage.getItem('user') || '{}').id || 1;
 
   useEffect(() => {
+    loadAdmins();
     loadManagers();
   }, []);
 
@@ -20,39 +28,81 @@ const ManagerManagement = ({ setCurrentView }) => {
     filterManagers();
   }, [searchTerm, managers, filterAdmin]);
 
-  const loadManagers = () => {
-    const storedManagers = JSON.parse(localStorage.getItem('managers') || '[]');
+  const loadAdmins = () => {
     const storedAdmins = JSON.parse(localStorage.getItem('admins') || '[]');
-    
-    // Enrich manager data with admin info
-    const enrichedManagers = storedManagers.map(manager => {
-      const admin = storedAdmins.find(a => a.id === manager.adminId);
-      return {
-        ...manager,
-        adminBusiness: admin?.businessName || 'Unknown',
-        adminPlan: admin?.planType || 'Unknown',
-        profileImage: manager.profileImage || '',
-        storeLogo: manager.storeLogo || '',
-        sidebarType: manager.sidebarType || 'standard'
-      };
-    });
-    
-    setManagers(enrichedManagers);
+    setAdmins(storedAdmins);
+  };
+
+  const loadManagers = async () => {
+    try {
+      setLoading(true);
+      const response = await ApiService.get(`/users/${currentUserId}/store-managers`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (response && response.success && response.data) {
+        // Transform API data to match component's expected format
+        const transformedManagers = response.data.map(manager => ({
+          id: manager.id,
+          managerName: manager.name,
+          phone: manager.phoneNumber,
+          email: manager.email || '',
+          storeName: 'Main Store', // Default value as API doesn't provide this
+          storeId: manager.id,
+          status: manager.isActive ? 'Active' : 'Inactive',
+          createdAt: manager.createdAt,
+          permissions: manager.permissions,
+          maxStores: manager.maxStores,
+          maxOutlet: manager.maxOutlet,
+          businessType: manager.businessType,
+          BusinessImage: manager.BusinessImage,
+          BusinessLogo: manager.BusinessLogo,
+          // Get admin info from localStorage
+          adminId: manager.createdBy,
+          adminBusiness: manager.name,
+          adminPlan: getAdminPlan(manager.createdBy)
+        }));
+
+        setManagers(transformedManagers);
+        setError(null);
+      } else {
+        setManagers([]);
+      }
+    } catch (err) {
+      console.error('Error loading managers:', err);
+      setError('Failed to load managers. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to get admin business name
+  const getAdminBusinessName = (adminId) => {
+    const admin = admins.find(a => a.id === adminId);
+    return admin?.businessName || 'Unknown Business';
+  };
+
+  // Helper function to get admin plan
+  const getAdminPlan = (adminId) => {
+    const admin = admins.find(a => a.id === adminId);
+    return admin?.planType || 'Unknown';
   };
 
   const filterManagers = () => {
     let filtered = [...managers];
 
     if (filterAdmin !== 'all') {
-      filtered = filtered.filter(manager => manager.adminId === filterAdmin);
+      filtered = filtered.filter(manager => manager.adminId === parseInt(filterAdmin));
     }
 
     if (searchTerm.trim()) {
       filtered = filtered.filter(manager =>
         manager.managerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         manager.adminBusiness.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        manager.phone.includes(searchTerm) ||
-        manager.storeName.toLowerCase().includes(searchTerm.toLowerCase())
+        (manager.phone && manager.phone.includes(searchTerm)) ||
+        (manager.storeName && manager.storeName.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
@@ -65,7 +115,12 @@ const ManagerManagement = ({ setCurrentView }) => {
   };
 
   const handleEdit = (manager) => {
-    alert(`Edit functionality for ${manager.managerName} coming soon!`);
+    // Navigate to create manager in edit mode
+    setCurrentView({
+      view: 'create-manager',
+      editMode: true,
+      managerToEdit: manager
+    });
   };
 
   const handleDelete = (manager) => {
@@ -73,34 +128,54 @@ const ManagerManagement = ({ setCurrentView }) => {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (managerToDelete) {
-      const updatedManagers = managers.filter(m => m.id !== managerToDelete.id);
-      localStorage.setItem('managers', JSON.stringify(updatedManagers));
-      
-      // Update recent activity
-      const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
-      activity.unshift({
-        business: managerToDelete.adminBusiness,
-        description: `Manager deleted: ${managerToDelete.managerName}`,
-        time: "Just now",
-        type: "warning"
-      });
-      localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
-      
-      loadManagers();
-      setShowDeleteConfirm(false);
-      setManagerToDelete(null);
+      try {
+        setLoading(true);
+
+        // Call API to deactivate user - Correct endpoint
+        const response = await ApiService.delete(`/users/${managerToDelete.id}/${false}`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+
+        if (response && response.message) {
+          // Update localStorage managers (keeping for backward compatibility)
+          const storedManagers = JSON.parse(localStorage.getItem('managers') || '[]');
+          const updatedStoredManagers = storedManagers.filter(m => m.id !== managerToDelete.id);
+          localStorage.setItem('managers', JSON.stringify(updatedStoredManagers));
+
+          // Update recent activity
+          const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
+          activity.unshift({
+            business: managerToDelete.adminBusiness,
+            description: `Manager deleted: ${managerToDelete.managerName}`,
+            time: "Just now",
+            type: "warning"
+          });
+          localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
+
+          // Reload managers from API
+          await loadManagers();
+          setShowDeleteConfirm(false);
+          setManagerToDelete(null);
+        }
+      } catch (err) {
+        console.error('Error deleting manager:', err);
+        alert('Failed to delete manager. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const getAdminsList = () => {
-    const admins = JSON.parse(localStorage.getItem('admins') || '[]');
     return admins;
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'Active': return 'bg-green-100 text-green-800';
       case 'Inactive': return 'bg-gray-100 text-gray-800';
       case 'Blocked': return 'bg-red-100 text-red-800';
@@ -121,7 +196,11 @@ const ManagerManagement = ({ setCurrentView }) => {
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid Date';
-      return date.toLocaleDateString();
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
     } catch (error) {
       return 'Invalid Date';
     }
@@ -139,9 +218,21 @@ const ManagerManagement = ({ setCurrentView }) => {
     }
   };
 
-  const handleCreateManager = () => {
-    setCurrentView('create-manager');
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-600">Loading managers...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -152,11 +243,11 @@ const ManagerManagement = ({ setCurrentView }) => {
           <p className="text-gray-600 mt-1">Manage all business managers across the platform</p>
         </div>
         <button
-          onClick={handleCreateManager}
-          className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+          onClick={() => setCurrentView('create-manager')}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
         >
-          <Plus className="h-5 w-5 mr-2" />
-          Create Manager
+          <User className="h-4 w-4 mr-2" />
+          <span>Create Manager</span>
         </button>
       </div>
 
@@ -237,8 +328,8 @@ const ManagerManagement = ({ setCurrentView }) => {
                 {managers.filter(m => {
                   try {
                     const createdAt = new Date(m.createdAt);
-                    return !isNaN(createdAt.getTime()) && 
-                           createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                    return !isNaN(createdAt.getTime()) &&
+                      createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
                   } catch {
                     return false;
                   }
@@ -258,7 +349,7 @@ const ManagerManagement = ({ setCurrentView }) => {
             <p className="text-sm text-gray-600 mt-1">{filteredManagers.length} managers found</p>
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -291,19 +382,17 @@ const ManagerManagement = ({ setCurrentView }) => {
                 <tr key={manager.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className="w-10 h-10 rounded-full overflow-hidden mr-3">
-                        {manager.profileImage ? (
-                          <img
-                            src={manager.profileImage}
-                            alt={manager.managerName}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
-                            <User className="h-5 w-5 text-blue-600" />
-                          </div>
-                        )}
-                      </div>
+                      {manager.BusinessImage ? (
+                        <img
+                          src={manager.BusinessImage}
+                          alt={manager.managerName}
+                          className="w-10 h-10 rounded-full object-cover mr-3"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                          <User className="h-5 w-5 text-blue-600" />
+                        </div>
+                      )}
                       <div>
                         <div className="font-medium text-gray-900">{manager.managerName}</div>
                         <div className="text-sm text-gray-500">ID: {getDisplayId(manager.id)}</div>
@@ -397,7 +486,7 @@ const ManagerManagement = ({ setCurrentView }) => {
             <div className="text-gray-500">No managers found</div>
             {filterAdmin !== 'all' ? (
               <p className="text-sm text-gray-400 mt-2">
-                Try changing your filters or create a new manager
+                Try changing your filters
               </p>
             ) : (
               <button
@@ -426,21 +515,23 @@ const ManagerManagement = ({ setCurrentView }) => {
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to delete manager <strong>{managerToDelete?.managerName}</strong>? 
+              Are you sure you want to delete manager <strong>{managerToDelete?.managerName}</strong>?
               This action cannot be undone.
             </p>
             <div className="flex justify-end space-x-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                disabled={loading}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                disabled={loading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                Delete Manager
+                {loading ? 'Deleting...' : 'Delete Manager'}
               </button>
             </div>
           </div>

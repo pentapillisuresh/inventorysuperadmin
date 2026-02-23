@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit, Trash2, Eye, Filter, Download, Lock, LockOpen, UserPlus,Building } from 'lucide-react';
+import { Search, Edit, Trash2, Eye, Filter, Download, Lock, LockOpen, UserPlus, Building } from 'lucide-react';
 import AdminDetailsPopup from './AdminDetailsPopup';
+import ApiService from '../utils/ApiService';
 
 const AdminManagement = ({ setCurrentView }) => {
   const [admins, setAdmins] = useState([]);
@@ -13,7 +14,9 @@ const AdminManagement = ({ setCurrentView }) => {
   const [adminToDelete, setAdminToDelete] = useState(null);
   const [adminToBlock, setAdminToBlock] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
-
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const clientToken = localStorage.getItem('token');
   useEffect(() => {
     loadAdmins();
   }, []);
@@ -22,9 +25,69 @@ const AdminManagement = ({ setCurrentView }) => {
     filterAdmins();
   }, [searchTerm, admins, statusFilter]);
 
-  const loadAdmins = () => {
-    const storedAdmins = JSON.parse(localStorage.getItem('admins') || '[]');
-    setAdmins(storedAdmins);
+  const loadAdmins = async () => {
+    try {
+      setLoading(true);
+      const response = await ApiService.get('/users/admins',{
+        headers: {
+          Authorization: `Bearer ${clientToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response) {
+        throw new Error('Failed to fetch admins');
+      }
+            
+      // Transform API data to match the component's expected format
+      const transformedAdmins = response.map(admin => ({
+        id: admin.id,
+        businessName: admin.name || 'Business Name',
+        adminName: admin.name,
+        businessType: 'Business', // Default value as API doesn't provide this
+        businessLogo: admin.BusinessLogo || '',
+        profileImage: admin.BusinessImage || '',
+        phone: admin.phoneNumber,
+        email: admin.email,
+        planType: admin.maxStores ? 'Yearly' : 'Monthly', // Determine plan type based on maxStores
+        planStartDate: formatDate(admin.createdAt),
+        planEndDate: formatDate(admin.expiryDate),
+        daysRemaining: calculateDaysRemaining(admin.expiryDate),
+        status: admin.isActive ? 'Active' : 'Inactive',
+        permissions: admin.permissions,
+        maxStores: admin.maxStores,
+        maxOutlet: admin.maxOutlet
+      }));
+      
+      setAdmins(transformedAdmins);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading admins:', err);
+      setError('Failed to load admin data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+  // Helper function to calculate days remaining until expiry
+  const calculateDaysRemaining = (expiryDate) => {
+    if (!expiryDate) return null;
+    const today = new Date();
+    const expiry = new Date(expiryDate);
+    const diffTime = expiry - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
   };
 
   const filterAdmins = () => {
@@ -40,7 +103,7 @@ const AdminManagement = ({ setCurrentView }) => {
       filtered = filtered.filter(admin =>
         admin.businessName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         admin.adminName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        admin.phone.includes(searchTerm)
+        (admin.phone && admin.phone.includes(searchTerm))
       );
     }
 
@@ -71,55 +134,70 @@ const AdminManagement = ({ setCurrentView }) => {
     setShowBlockConfirm(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (adminToDelete) {
-      const updatedAdmins = admins.filter(a => a.id !== adminToDelete.id);
-      localStorage.setItem('admins', JSON.stringify(updatedAdmins));
-      
-      // Update recent activity
-      const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
-      activity.unshift({
-        business: adminToDelete.businessName,
-        description: "Admin account deleted",
-        time: "Just now",
-        type: "warning"
-      });
-      localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
-      
-      loadAdmins();
-      setShowDeleteConfirm(false);
-      setAdminToDelete(null);
+      try {
+        const response = await fetch(`http://localhost:5001/api/users/${adminToDelete.id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete admin');
+        }
+
+        // Update recent activity in localStorage (keeping this as it's UI-related)
+        const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
+        activity.unshift({
+          business: adminToDelete.businessName,
+          description: "Admin account deleted",
+          time: "Just now",
+          type: "warning"
+        });
+        localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
+        
+        // Reload admins from API
+        await loadAdmins();
+        setShowDeleteConfirm(false);
+        setAdminToDelete(null);
+      } catch (err) {
+        console.error('Error deleting admin:', err);
+        alert('Failed to delete admin. Please try again.');
+      }
     }
   };
 
-  const confirmBlockUnblock = () => {
+  const confirmBlockUnblock = async () => {
     if (adminToBlock) {
-      const updatedAdmins = admins.map(admin => {
-        if (admin.id === adminToBlock.id) {
-          const newStatus = admin.status === 'Blocked' ? 'Active' : 'Blocked';
-          
-          // Add to recent activity
-          const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
-          activity.unshift({
-            business: admin.businessName,
-            description: `Admin account ${newStatus === 'Blocked' ? 'blocked' : 'unblocked'}`,
-            time: "Just now",
-            type: newStatus === 'Blocked' ? 'warning' : 'updated'
-          });
-          localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
-          
-          return {
-            ...admin,
-            status: newStatus
-          };
+      try {
+        const newStatus = !adminToBlock.isActive;
+        
+        const response = await ApiService.delete(`/users/${adminToBlock.id}/${false}`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+        if (!response) {
+          throw new Error('Failed to update admin status');
         }
-        return admin;
-      });
-      
-      localStorage.setItem('admins', JSON.stringify(updatedAdmins));
-      loadAdmins();
-      setShowBlockConfirm(false);
-      setAdminToBlock(null);
+
+        // Add to recent activity
+        const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
+        activity.unshift({
+          business: adminToBlock.businessName,
+          description: `Admin account ${newStatus ? 'unblocked' : 'blocked'}`,
+          time: "Just now",
+          type: newStatus ? 'updated' : 'warning'
+        });
+        localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
+        
+        // Reload admins from API
+        await loadAdmins();
+        setShowBlockConfirm(false);
+        setAdminToBlock(null);
+      } catch (err) {
+        console.error('Error updating admin status:', err);
+        alert('Failed to update admin status. Please try again.');
+      }
     }
   };
 
@@ -162,6 +240,22 @@ const AdminManagement = ({ setCurrentView }) => {
     blocked: admins.filter(a => a.status === 'Blocked').length,
     expiring: admins.filter(a => a.daysRemaining && a.daysRemaining <= 7 && a.status === 'Active').length
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-600">Loading admins...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -405,13 +499,13 @@ const AdminManagement = ({ setCurrentView }) => {
                           <Lock className="h-5 w-5" />
                         )}
                       </button>
-                      <button
+                      {/* <button
                         onClick={() => handleDelete(admin)}
                         className="text-red-600 hover:text-red-900 p-1"
                         title="Delete"
                       >
                         <Trash2 className="h-5 w-5" />
-                      </button>
+                      </button> */}
                     </div>
                   </td>
                 </tr>
