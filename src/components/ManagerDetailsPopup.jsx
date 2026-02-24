@@ -16,7 +16,8 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
   const [renewFormData, setRenewFormData] = useState({
     planType: manager.planType || 'Monthly',
     startDate: '',
-    expiryDate: ''
+    expiryDate: '',
+    amount:0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -129,7 +130,6 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
           updated.expiryDate = calculateExpiryDate(updated.startDate, updated.planType);
         }
       }
-      
       return updated;
     });
   };
@@ -149,7 +149,8 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
       const requestData = {
         startDate: new Date(renewFormData.startDate).toISOString(),
         expiryDate: renewFormData.expiryDate ? new Date(renewFormData.expiryDate).toISOString() : null,
-        planType: renewFormData.planType
+        planType: renewFormData.planType,
+        amount:renewFormData.amount
       };
 
       const response = await ApiService.put(`users/admins/${manager.id}/renew`, requestData, {
@@ -174,7 +175,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
         localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
         
         // Refresh the page or update manager data
-        window.location.reload(); // Simple refresh to show updated data
+        // window.location.reload(); // Simple refresh to show updated data
       }
     } catch (error) {
       console.error('Error renewing plan:', error);
@@ -607,6 +608,20 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     Automatically calculated based on plan type and start date
                   </p>
                 </div>
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    onChange={handleRenewInputChange}
+                    value={renewFormData.amount}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                  />
+                </div>
+
               </div>
 
               {/* Modal Actions */}

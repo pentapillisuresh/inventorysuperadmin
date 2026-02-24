@@ -5,6 +5,7 @@ import {
   Plus, RefreshCw, Building,
   Shield, BarChart3, Settings
 } from 'lucide-react';
+import ApiService from '../utils/ApiService';
 
 const SuperAdminDashboard = ({ setCurrentView }) => {
   const [dashboardData, setDashboardData] = useState({
@@ -14,34 +15,88 @@ const SuperAdminDashboard = ({ setCurrentView }) => {
     expiringSoon: 0,
     totalManagers: 0
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const token = localStorage.getItem('token');
+  const userData = localStorage.getItem('user');
+  const userId = JSON.parse(userData).id;
+
+  
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      // Use the logged-in user's ID as createdBy
+      const response = await ApiService.get(`/users/allUser/${userId}`,{
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+      
+      if (response.success) {
+        const adminData = response.data.admin;
+        const managerData = response.data.store_manager;
+
+        setDashboardData({
+          totalAdmins: adminData.active + adminData.inactive + adminData.expired,
+          activeAdmins: adminData.active,
+          blockedAdmins: adminData.inactive, // Assuming inactive means blocked
+          expiringSoon: adminData.aboutToExpire,
+          totalManagers: managerData.active + managerData.inactive + managerData.expired
+        });
+      } else {
+        throw new Error('API returned unsuccessful response');
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Load data from localStorage
-    const admins = JSON.parse(localStorage.getItem('admins') || '[]');
-    const managers = JSON.parse(localStorage.getItem('managers') || '[]');
-    
-    const totalAdmins = admins.length;
-    const activeAdmins = admins.filter(admin => admin.status === 'Active').length;
-    const blockedAdmins = admins.filter(admin => admin.status === 'Blocked').length;
-    
-    // Calculate expiring soon (within 7 days)
-    const today = new Date();
-    const expiringSoon = admins.filter(admin => {
-      if (!admin.planEndDate) return false;
-      const endDate = new Date(admin.planEndDate);
-      const diffTime = endDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays <= 7 && diffDays >= 0 && admin.status === 'Active';
-    }).length;
+    if (userId) {
+      fetchDashboardData();
+    } else {
+      // Fallback to localStorage if no userId provided
+      const admins = JSON.parse(localStorage.getItem('admins') || '[]');
+      const managers = JSON.parse(localStorage.getItem('managers') || '[]');
+      
+      const totalAdmins = admins.length;
+      const activeAdmins = admins.filter(admin => admin.status === 'Active').length;
+      const blockedAdmins = admins.filter(admin => admin.status === 'Blocked').length;
+      
+      // Calculate expiring soon (within 7 days)
+      const today = new Date();
+      const expiringSoon = admins.filter(admin => {
+        if (!admin.planEndDate) return false;
+        const endDate = new Date(admin.planEndDate);
+        const diffTime = endDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 7 && diffDays >= 0 && admin.status === 'Active';
+      }).length;
 
-    setDashboardData({
-      totalAdmins,
-      activeAdmins,
-      blockedAdmins,
-      expiringSoon,
-      totalManagers: managers.length
-    });
-  }, []);
+      setDashboardData({
+        totalAdmins,
+        activeAdmins,
+        blockedAdmins,
+        expiringSoon,
+        totalManagers: managers.length
+      });
+      setLoading(false);
+    }
+  }, [userId]);
+
+  const handleRefresh = () => {
+    if (userId) {
+      fetchDashboardData();
+    }
+  };
 
   const stats = [
     {
@@ -117,6 +172,31 @@ const SuperAdminDashboard = ({ setCurrentView }) => {
     }
   ];
 
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+        <p className="text-red-600">Error loading dashboard: {error}</p>
+        <button 
+          onClick={handleRefresh}
+          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -129,6 +209,13 @@ const SuperAdminDashboard = ({ setCurrentView }) => {
           <div className="text-sm text-gray-500">
             Last updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
+          <button 
+            onClick={handleRefresh}
+            className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            title="Refresh data"
+          >
+            <RefreshCw className="h-5 w-5 text-gray-600" />
+          </button>
           <button className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200">
             <Settings className="h-5 w-5 text-gray-600" />
           </button>

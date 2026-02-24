@@ -14,7 +14,8 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
   const [renewFormData, setRenewFormData] = useState({
     planType: admin.planType || 'Monthly',
     startDate: '',
-    expiryDate: ''
+    expiryDate: '',
+    amount:0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -108,7 +109,8 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
       const requestData = {
         startDate: new Date(renewFormData.startDate).toISOString(),
         expiryDate: renewFormData.expiryDate ? new Date(renewFormData.expiryDate).toISOString() : null,
-        planType: renewFormData.planType
+        planType: renewFormData.planType,
+        amount:renewFormData.amount
       };
 
       const response = await ApiService.put(`users/admins/${admin.id}/renew`, requestData, {
@@ -447,6 +449,19 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                   <p className="text-xs text-gray-500 mt-1">
                     Automatically calculated based on plan type and start date
                   </p>
+                </div>
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    onChange={handleRenewInputChange}
+                    value={renewFormData.amount}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                  />
                 </div>
               </div>
 

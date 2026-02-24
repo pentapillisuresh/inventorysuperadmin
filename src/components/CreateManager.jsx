@@ -26,6 +26,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     limits: {
       maxOutlet: 5,
     },
+    amount:0,
     profileImage: null,
     profileImagePath: '',
     businessLogo: null,
@@ -354,6 +355,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         userData.startDate = formData.planStartDate ? new Date(formData.planStartDate).toISOString() : null;
         userData.expiryDate = formData.planEndDate ? new Date(formData.planEndDate).toISOString() : null;
         userData.password = formData.password;
+        userData.amount = formData.amount;
       }
 
       let result;
@@ -836,6 +838,28 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
               ))}
             </div>
           </section>
+
+          {!editMode && (
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                 Amount
+                </label>
+                <input
+                  type="number"
+                  name='amount'
+                  value={formData.amount}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </section>
+          )}
+
 
           {/* Form Actions */}
           <div className="flex justify-end space-x-4 pt-6 border-t">

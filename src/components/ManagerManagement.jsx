@@ -490,8 +490,8 @@ const ManagerManagement = ({ setCurrentView }) => {
               </p>
             ) : (
               <button
-                onClick={handleCreateManager}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center mx-auto"
+              onClick={() => setCurrentView('create-manager')}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center mx-auto"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Manager

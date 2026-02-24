@@ -79,13 +79,9 @@ function App() {
           />
         );
       case 'manager-management':
-<<<<<<< HEAD
-        return <ManagerManagement setCurrentView={setCurrentView} />;
-=======
         return <ManagerManagement 
         setCurrentView={setCurrentView}
       />;
->>>>>>> 5717b7b (rrr)
       case 'create-manager':
         return <CreateManager setCurrentView={setCurrentView} 
         editMode={currentView.editMode || false}
