@@ -44,7 +44,7 @@ const AdminManagement = ({ setCurrentView }) => {
         id: admin.id,
         businessName: admin.name || 'Business Name',
         adminName: admin.name,
-        businessType: 'Business', // Default value as API doesn't provide this
+        businessType: admin.businessType||'Business', // Default value as API doesn't provide this
         businessLogo: admin.BusinessLogo || '',
         profileImage: admin.BusinessImage || '',
         phone: admin.phoneNumber,

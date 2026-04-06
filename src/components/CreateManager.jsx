@@ -6,6 +6,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   const [formData, setFormData] = useState({
     businessName: '',
     businessType: '',
+    businessAddress: '',
     managerName: '',
     phone: '',
     email: '',
@@ -26,24 +27,24 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     limits: {
       maxOutlet: 5,
     },
-    amount:0,
+    amount: 0,
     profileImage: null,
     profileImagePath: '',
     businessLogo: null,
     businessLogoPath: '',
     status: 'Active'
   });
-  
+
   const clientToken = localStorage.getItem('token');
   const currentUserId = JSON.parse(localStorage.getItem('user') || '{}').id || 1;
-  
+
   const [generatedPassword, setGeneratedPassword] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLogo, setPreviewLogo] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const fileInputRef = useRef(null);
   const logoInputRef = useRef(null);
 
@@ -78,7 +79,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   useEffect(() => {
     if (editMode && managerToEdit) {
       console.log("managerToEdit:", managerToEdit);
-      
+
       const formattedFeatures = {};
       featuresList.forEach(feature => {
         formattedFeatures[feature.id] = !!managerToEdit.permissions?.[feature.id];
@@ -199,18 +200,18 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
       // Upload image to server
       const imagePath = await uploadImage(file);
-      
+
       if (type === 'profile') {
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           profileImage: file,
-          profileImagePath: imagePath 
+          profileImagePath: imagePath
         }));
       } else {
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           businessLogo: file,
-          businessLogoPath: imagePath 
+          businessLogoPath: imagePath
         }));
       }
     } catch (error) {
@@ -239,11 +240,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
   const calculateEndDate = (startDate, planType) => {
     if (!startDate || !planType) return '';
-    
+
     const start = new Date(startDate);
     const end = new Date(start);
-    
-    switch(planType) {
+
+    switch (planType) {
       case 'Trial':
         end.setDate(end.getDate() + 15);
         break;
@@ -256,7 +257,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
       default:
         return '';
     }
-    
+
     return end.toISOString().split('T')[0];
   };
 
@@ -275,8 +276,41 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           'Content-Type': 'application/json',
         },
       });
+  
+      const createdUser = response.data;
+    
+      // 🔥 Prepare store data
+      const storeData = {
+        name: formData.businessName,
+        address: formData.businessAddress,
+        phoneNumber: formData.phone,
+        email: formData.email,
+        creditLimit: 50000.0,
+        currentCredit: 0,
+        managerId: createdUser.id,
+        adminId: currentUserId, // ✅ dynamic admin (recommended)
+        isActive: true
+      };
+  
+      await createStore(storeData);
+  
+      return createdUser;
+  
+    } catch (error) {
+      console.error('Error in createUserAPI:', error);
+      throw error;
+    }
+  };
 
-      return response;
+  const createStore = async (storeData) => {
+    console.log("storeData::",storeData)
+    try {
+       await ApiService.post('/stores', storeData, {
+        headers: {
+          Authorization: `Bearer ${clientToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
     } catch (error) {
       console.error('Error in createUserAPI:', error);
       throw error;
@@ -301,7 +335,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validate required fields
     if (!formData.businessName || !formData.managerName || !formData.phone) {
       alert('Please fill in all required fields');
@@ -345,6 +379,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         BusinessImage: formData.profileImagePath || '',
         BusinessLogo: formData.businessLogoPath || '',
         businessType: formData.businessType || null,
+        address: formData.businessAddress || null,
         // Add createdBy for new manager
         ...(!editMode && { createdBy: currentUserId })
       };
@@ -359,7 +394,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
       }
 
       let result;
-      
+
       // Call the appropriate API
       if (editMode) {
         result = await updateUserAPI(userData);
@@ -376,7 +411,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         maxOutlet: formData.limits.maxOutlet || 1,
         createdAt: editMode ? managerToEdit.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        daysRemaining: formData.planEndDate ? 
+        daysRemaining: formData.planEndDate ?
           Math.ceil((new Date(formData.planEndDate) - new Date()) / (1000 * 60 * 60 * 24)) : null,
         profileImage: formData.profileImagePath,
         businessLogo: formData.businessLogoPath
@@ -384,7 +419,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
       // Update localStorage
       const managers = JSON.parse(localStorage.getItem('managers') || '[]');
-      
+
       if (editMode) {
         const index = managers.findIndex(a => a.id === managerToEdit.id);
         if (index !== -1) {
@@ -393,7 +428,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
       } else {
         managers.push(manager);
       }
-      
+
       localStorage.setItem('managers', JSON.stringify(managers));
 
       // Add to recent activity
@@ -438,7 +473,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           {/* Profile Image Upload */}
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Images</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Profile Image */}
               <div>
@@ -448,9 +483,9 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewImage ? (
                     <div className="relative">
-                      <img 
-                        src={previewImage} 
-                        alt="Profile Preview" 
+                      <img
+                        src={previewImage}
+                        alt="Profile Preview"
                         className="w-32 h-32 rounded-full object-cover mx-auto mb-3"
                       />
                       <button
@@ -496,9 +531,9 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewLogo ? (
                     <div className="relative">
-                      <img 
-                        src={previewLogo} 
-                        alt="Logo Preview" 
+                      <img
+                        src={previewLogo}
+                        alt="Logo Preview"
                         className="w-32 h-32 object-contain mx-auto mb-3"
                       />
                       <button
@@ -544,7 +579,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
               <Building className="h-5 w-5 text-gray-400 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Business Details</h2>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -560,7 +595,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Business Type
@@ -583,7 +618,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           {/* Manager User Details */}
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Manager Details</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -599,7 +634,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number (Login ID) *
@@ -625,6 +660,19 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder="manager@business.com"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address
+                </label>
+                <textarea
+                  type="text"
+                  name="businessAddress"
+                  value={formData.businessAddress}
+                  onChange={handleInputChange}
+                  placeholder="Address"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -658,7 +706,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 <Key className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Login Credentials</h2>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center">
@@ -675,7 +723,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                       Auto-generate password
                     </label>
                   </div>
-                  
+
                   <div className="flex items-center">
                     <input
                       type="radio"
@@ -743,7 +791,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 <Calendar className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Subscription Plan</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -762,7 +810,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                     ))}
                   </select>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Plan Start Date *
@@ -776,7 +824,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                     required
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Plan End Date
@@ -795,7 +843,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           {/* Usage Limits */}
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Usage Limits</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -820,7 +868,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
             <p className="text-gray-600 mb-4">
               Select features this manager can access. Manager will only see selected menus.
             </p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {featuresList.map(feature => (
                 <div key={feature.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
@@ -840,24 +888,24 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           </section>
 
           {!editMode && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                 Amount
-                </label>
-                <input
-                  type="number"
-                  name='amount'
-                  value={formData.amount}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+            <section>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    name='amount'
+                    value={formData.amount}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
           )}
 
 
