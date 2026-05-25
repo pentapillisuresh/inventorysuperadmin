@@ -7,39 +7,35 @@ import {
 } from 'lucide-react';
 import ApiService from '../utils/ApiService';
 
-const AdminDetailsPopup = ({ admin, onClose }) => {
-  console.log("admin::", admin);
-  
+const AdminDetailsPopup = ({ admin, onClose, onRenewSuccess }) => {
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [renewFormData, setRenewFormData] = useState({
     planType: admin.planType || 'Monthly',
     startDate: '',
     expiryDate: '',
-    amount:0
+    amount: 0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatDateForInput = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   };
 
   const getStatusIcon = (status) => {
-    switch(status) {
-      case 'Active':
+    switch(status?.toLowerCase()) {
+      case 'active':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'Blocked':
+      case 'blocked':
         return <XCircle className="h-5 w-5 text-red-500" />;
       default:
         return <AlertCircle className="h-5 w-5 text-amber-500" />;
@@ -47,11 +43,15 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
   };
 
   const getPlanColor = (planType) => {
-    switch(planType) {
-      case 'Yearly': return 'bg-blue-100 text-blue-800';
-      case 'Monthly': return 'bg-green-100 text-green-800';
-      case 'Trial': return 'bg-amber-100 text-amber-800';
-      default: return 'bg-gray-100 text-gray-800';
+    switch(planType?.toLowerCase()) {
+      case 'yearly': 
+        return 'bg-blue-100 text-blue-800';
+      case 'monthly': 
+        return 'bg-green-100 text-green-800';
+      case 'trial': 
+        return 'bg-amber-100 text-amber-800';
+      default: 
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -59,6 +59,8 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
     if (!startDate || !planType) return '';
     
     const start = new Date(startDate);
+    if (isNaN(start.getTime())) return '';
+    
     const end = new Date(start);
     
     switch(planType) {
@@ -83,7 +85,6 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
     setRenewFormData(prev => {
       const updated = { ...prev, [name]: value };
       
-      // Calculate expiry date when start date or plan type changes
       if (name === 'startDate' || name === 'planType') {
         if (updated.startDate && updated.planType) {
           updated.expiryDate = calculateExpiryDate(updated.startDate, updated.planType);
@@ -95,9 +96,13 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
   };
 
   const handleRenewSubmit = async () => {
-    // Validate form
     if (!renewFormData.planType || !renewFormData.startDate) {
       alert('Please select plan type and start date');
+      return;
+    }
+
+    if (renewFormData.amount <= 0) {
+      alert('Please enter a valid amount');
       return;
     }
 
@@ -110,7 +115,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
         startDate: new Date(renewFormData.startDate).toISOString(),
         expiryDate: renewFormData.expiryDate ? new Date(renewFormData.expiryDate).toISOString() : null,
         planType: renewFormData.planType,
-        amount:renewFormData.amount
+        amount: parseFloat(renewFormData.amount)
       };
 
       const response = await ApiService.put(`users/admins/${admin.id}/renew`, requestData, {
@@ -129,17 +134,21 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
         activity.unshift({
           business: admin.businessName,
           description: `Plan renewed: ${renewFormData.planType} plan`,
-          time: "Just now",
+          time: new Date().toLocaleString(),
           type: "updated"
         });
         localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
         
-        // Refresh the page or update admin data
-        window.location.reload(); // Simple refresh to show updated data
+        // Call success callback if provided
+        if (onRenewSuccess) {
+          onRenewSuccess();
+        } else {
+          window.location.reload();
+        }
       }
     } catch (error) {
       console.error('Error renewing plan:', error);
-      alert(`Failed to renew plan: ${error.message || 'Please try again.'}`);
+      alert(`Failed to renew plan: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -171,6 +180,23 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
     create_outlets: 'Create Outlets'
   };
 
+  // Parse permissions safely
+  const getPermissions = () => {
+    try {
+      if (admin.permissions) {
+        return typeof admin.permissions === 'string' 
+          ? JSON.parse(admin.permissions) 
+          : admin.permissions;
+      }
+      return {};
+    } catch (error) {
+      console.error('Error parsing permissions:', error);
+      return {};
+    }
+  };
+
+  const permissions = getPermissions();
+
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -179,26 +205,27 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
           <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-6">
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="text-2xl font-bold">{admin.businessName}</h2>
+                <h2 className="text-2xl font-bold">{admin.businessName || 'N/A'}</h2>
                 <p className="text-blue-100 mt-1">Admin Account Details</p>
               </div>
               <button
                 onClick={onClose}
                 className="text-white hover:text-blue-200 transition-colors"
+                aria-label="Close"
               >
                 <X className="h-6 w-6" />
               </button>
             </div>
             
-            <div className="flex items-center space-x-4 mt-4">
+            <div className="flex flex-wrap items-center gap-3 mt-4">
               <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${getPlanColor(admin.planType)}`}>
-                {admin.planType} Plan
+                {admin.planType || 'N/A'} Plan
               </span>
               <div className="flex items-center">
                 {getStatusIcon(admin.status)}
-                <span className="ml-2 font-medium">{admin.status}</span>
+                <span className="ml-2 font-medium">{admin.status || 'N/A'}</span>
               </div>
-              {admin.daysRemaining && (
+              {admin.daysRemaining !== undefined && admin.daysRemaining !== null && (
                 <div className="flex items-center text-blue-100">
                   <Clock className="h-4 w-4 mr-1" />
                   <span>{admin.daysRemaining} days remaining</span>
@@ -219,7 +246,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-gray-500">Business Name</p>
-                      <p className="font-medium">{admin.businessName}</p>
+                      <p className="font-medium">{admin.businessName || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Business Type</p>
@@ -240,11 +267,11 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-gray-500">Admin Name</p>
-                      <p className="font-medium">{admin.adminName}</p>
+                      <p className="font-medium">{admin.adminName || 'N/A'}</p>
                     </div>
                     <div className="flex items-center">
                       <Phone className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="font-medium">{admin.phone}</span>
+                      <span className="font-medium">{admin.phone || 'N/A'}</span>
                     </div>
                     {admin.email && (
                       <div className="flex items-center">
@@ -265,7 +292,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <p className="text-sm text-gray-600">Plan Type</p>
-                    <p className="text-lg font-bold text-blue-700">{admin.planType}</p>
+                    <p className="text-lg font-bold text-blue-700">{admin.planType || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Start Date</p>
@@ -307,35 +334,41 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
               </div>
 
               {/* Enabled Features */}
-              <div className="bg-white border rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-5 py-4 border-b">
-                  <h3 className="font-semibold text-gray-900">Enabled Features & Permissions</h3>
-                  <p className="text-sm text-gray-600 mt-1">Admin can access only these features</p>
-                </div>
-                <div className="p-5">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {admin.permissions && Object.entries(admin.permissions).map(([feature, enabled]) => {
-                      const Icon = featureIcons[feature] || ShoppingBag;
-                      return (
-                        <div 
-                          key={feature} 
-                          className={`flex items-center p-3 rounded-lg border ${enabled ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50 opacity-50'}`}
-                        >
-                          <Icon className="h-5 w-5 mr-3 text-gray-500" />
-                          <span className="font-medium text-gray-700">{featureLabels[feature] || feature}</span>
-                          <div className="ml-auto">
-                            {enabled ? (
-                              <CheckCircle className="h-5 w-5 text-green-500" />
-                            ) : (
-                              <XCircle className="h-5 w-5 text-gray-400" />
-                            )}
+              {Object.keys(permissions).length > 0 && (
+                <div className="bg-white border rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 px-5 py-4 border-b">
+                    <h3 className="font-semibold text-gray-900">Enabled Features & Permissions</h3>
+                    <p className="text-sm text-gray-600 mt-1">Admin can access only these features</p>
+                  </div>
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {Object.entries(permissions).map(([feature, enabled]) => {
+                        const Icon = featureIcons[feature] || ShoppingBag;
+                        return (
+                          <div 
+                            key={feature} 
+                            className={`flex items-center p-3 rounded-lg border ${
+                              enabled ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50 opacity-50'
+                            }`}
+                          >
+                            <Icon className="h-5 w-5 mr-3 text-gray-500" />
+                            <span className="font-medium text-gray-700">
+                              {featureLabels[feature] || feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                            <div className="ml-auto">
+                              {enabled ? (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-gray-400" />
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Security Information */}
               <div className="bg-amber-50 p-5 rounded-xl border border-amber-200">
@@ -346,15 +379,19 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-amber-800">Last Login</span>
-                    <span className="font-medium">Never (Account not used yet)</span>
+                    <span className="font-medium">
+                      {admin.lastLogin ? formatDate(admin.lastLogin) : 'Never (Account not used yet)'}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-amber-800">Password Method</span>
-                    <span className="font-medium">{admin.passwordMethod === 'auto' ? 'Auto-generated' : 'Manual'}</span>
+                    <span className="font-medium">
+                      {admin.passwordMethod === 'auto' ? 'Auto-generated' : admin.passwordMethod === 'manual' ? 'Manual' : 'N/A'}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-amber-800">Account Status</span>
-                    <span className="font-medium">{admin.status}</span>
+                    <span className="font-medium">{admin.status || 'N/A'}</span>
                   </div>
                 </div>
               </div>
@@ -366,13 +403,13 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
             <div className="flex justify-end space-x-3">
               <button
                 onClick={onClose}
-                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Close
               </button>
               <button
                 onClick={() => setShowRenewModal(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Renew Plan
@@ -391,7 +428,8 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                 <h3 className="text-xl font-bold text-gray-900">Renew Plan</h3>
                 <button
                   onClick={() => setShowRenewModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Close modal"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -411,7 +449,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                     name="planType"
                     value={renewFormData.planType}
                     onChange={handleRenewInputChange}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   >
                     {planTypes.map(plan => (
                       <option key={plan.value} value={plan.value}>{plan.label}</option>
@@ -430,7 +468,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                     value={renewFormData.startDate}
                     onChange={handleRenewInputChange}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -444,23 +482,27 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                     name="expiryDate"
                     value={renewFormData.expiryDate}
                     readOnly
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Automatically calculated based on plan type and start date
                   </p>
                 </div>
+
                 {/* Amount */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Amount
+                    Amount *
                   </label>
                   <input
                     type="number"
                     name="amount"
                     onChange={handleRenewInputChange}
                     value={renewFormData.amount}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -469,7 +511,7 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
               <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
                 <button
                   onClick={() => setShowRenewModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                   disabled={isSubmitting}
                 >
                   Cancel
@@ -477,9 +519,16 @@ const AdminDetailsPopup = ({ admin, onClose }) => {
                 <button
                   onClick={handleRenewSubmit}
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  {isSubmitting ? 'Processing...' : 'Confirm Renewal'}
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Confirm Renewal'
+                  )}
                 </button>
               </div>
             </div>

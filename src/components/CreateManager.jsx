@@ -32,7 +32,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     profileImagePath: '',
     businessLogo: null,
     businessLogoPath: '',
-    status: 'Active'
+    status: 'Active',
+    officeAddress: '',
+    FSSAI_No: '',
+    GST_No: '',
+    CIN_No: ''
   });
 
   const clientToken = localStorage.getItem('token');
@@ -44,6 +48,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   const [previewLogo, setPreviewLogo] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
 
   const fileInputRef = useRef(null);
   const logoInputRef = useRef(null);
@@ -80,14 +85,25 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     if (editMode && managerToEdit) {
       console.log("managerToEdit:", managerToEdit);
 
+      // Safely parse permissions
+      let parsedPermissions = {};
+      try {
+        parsedPermissions = typeof managerToEdit.permissions === 'string' 
+          ? JSON.parse(managerToEdit.permissions) 
+          : (managerToEdit.permissions || {});
+      } catch (error) {
+        console.error('Error parsing permissions:', error);
+      }
+
       const formattedFeatures = {};
       featuresList.forEach(feature => {
-        formattedFeatures[feature.id] = !!managerToEdit.permissions?.[feature.id];
+        formattedFeatures[feature.id] = parsedPermissions[feature.id] || false;
       });
 
       setFormData({
-        businessName: managerToEdit.adminBusiness || '',
+        businessName: managerToEdit.adminBusiness || managerToEdit.businessName || '',
         businessType: managerToEdit.businessType || '',
+        businessAddress: managerToEdit.address || managerToEdit.businessAddress || '',
         managerName: managerToEdit.managerName || managerToEdit.name || '',
         phone: managerToEdit.phone || managerToEdit.phoneNumber || '',
         email: managerToEdit.email || '',
@@ -98,11 +114,16 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         planEndDate: managerToEdit.planEndDate ? managerToEdit.planEndDate.split('T')[0] : '',
         features: formattedFeatures,
         limits: { maxOutlet: managerToEdit.maxOutlet || 5 },
+        amount: managerToEdit.amount || 0,
         profileImage: null,
         profileImagePath: managerToEdit.profileImage || managerToEdit.BusinessImage || '',
         businessLogo: null,
         businessLogoPath: managerToEdit.businessLogo || managerToEdit.BusinessLogo || '',
-        status: managerToEdit.status || (managerToEdit.isActive ? 'Active' : 'Inactive')
+        status: managerToEdit.status || (managerToEdit.isActive ? 'Active' : 'Inactive'),
+        officeAddress: managerToEdit.officeAddress || '',
+        FSSAI_No: managerToEdit.FSSAI_No || '',
+        GST_No: managerToEdit.GST_No || '',
+        CIN_No: managerToEdit.CIN_No || ''
       });
 
       if (managerToEdit.profileImage || managerToEdit.BusinessImage) {
@@ -130,6 +151,10 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleFeatureToggle = (featureId) => {
@@ -153,18 +178,18 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   };
 
   const uploadImage = async (file) => {
-    const formData = new FormData();
-    formData.append('image', file);
+    const uploadFormData = new FormData();
+    uploadFormData.append('image', file);
 
     try {
-      const response = await ApiService.post('/upload/upload-Image', formData, {
+      const response = await ApiService.post('/upload/upload-Image', uploadFormData, {
         headers: {
           Authorization: `Bearer ${clientToken}`,
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      if (!response) {
+      if (!response || !response.imagePath) {
         throw new Error('Image upload failed');
       }
 
@@ -178,6 +203,13 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   const handleImageUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (JPEG, PNG, or WEBP)');
+      return;
+    }
 
     if (file.size > 5 * 1024 * 1024) { // 5MB limit
       alert('File size must be less than 5MB');
@@ -242,6 +274,8 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     if (!startDate || !planType) return '';
 
     const start = new Date(startDate);
+    if (isNaN(start.getTime())) return '';
+
     const end = new Date(start);
 
     switch (planType) {
@@ -268,6 +302,45 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     }
   }, [formData.planStartDate, formData.planType, editMode]);
 
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.businessName.trim()) {
+      newErrors.businessName = 'Business name is required';
+    }
+
+    if (!formData.managerName.trim()) {
+      newErrors.managerName = 'Manager name is required';
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^\+?[0-9]{10,15}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Please enter a valid phone number';
+    }
+
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    if (!editMode) {
+      if (!formData.planType) {
+        newErrors.planType = 'Plan type is required';
+      }
+
+      if (!formData.planStartDate) {
+        newErrors.planStartDate = 'Plan start date is required';
+      }
+
+      if (!formData.password) {
+        newErrors.password = 'Password is required';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const createUserAPI = async (userData) => {
     try {
       const response = await ApiService.post('/users/createUser', userData, {
@@ -276,26 +349,8 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
           'Content-Type': 'application/json',
         },
       });
-  
-      const createdUser = response.data;
-    
-      // 🔥 Prepare store data
-      const storeData = {
-        name: formData.businessName,
-        address: formData.businessAddress,
-        phoneNumber: formData.phone,
-        email: formData.email,
-        creditLimit: 50000.0,
-        currentCredit: 0,
-        managerId: createdUser.id,
-        adminId: currentUserId, // ✅ dynamic admin (recommended)
-        isActive: true
-      };
-  
-      await createStore(storeData);
-  
-      return createdUser;
-  
+
+      return response;
     } catch (error) {
       console.error('Error in createUserAPI:', error);
       throw error;
@@ -303,16 +358,16 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   };
 
   const createStore = async (storeData) => {
-    console.log("storeData::",storeData)
     try {
-       await ApiService.post('/stores', storeData, {
+      const response = await ApiService.post('/stores', storeData, {
         headers: {
           Authorization: `Bearer ${clientToken}`,
           'Content-Type': 'application/json',
         },
       });
+      return response;
     } catch (error) {
-      console.error('Error in createUserAPI:', error);
+      console.error('Error in createStore:', error);
       throw error;
     }
   };
@@ -336,21 +391,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate required fields
-    if (!formData.businessName || !formData.managerName || !formData.phone) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    // Validate plan fields for new manager
-    if (!editMode && (!formData.planType || !formData.planStartDate)) {
-      alert('Please select plan type and start date');
-      return;
-    }
-
-    // Validate password for new manager
-    if (!editMode && !formData.password) {
-      alert('Please generate or enter a password');
+    if (!validateForm()) {
       return;
     }
 
@@ -368,10 +409,10 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         create_outlets: formData.features.create_outlets || false
       };
 
-      // Base user data object according to the model
+      // Base user data object
       const userData = {
         name: formData.managerName,
-        email: formData.email || `${formData.phone}@temp.com`, // Fallback email if not provided
+        email: formData.email || `${formData.phone}@temp.com`,
         phoneNumber: formData.phone,
         role: "store_manager",
         maxOutlet: formData.limits.maxOutlet || 1,
@@ -380,63 +421,52 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
         BusinessLogo: formData.businessLogoPath || '',
         businessType: formData.businessType || null,
         address: formData.businessAddress || null,
-        // Add createdBy for new manager
+        officeAddress: formData.officeAddress || '',
+        FSSAI_No: formData.FSSAI_No || '',
+        GST_No: formData.GST_No || '',
+        CIN_No: formData.CIN_No || '',
         ...(!editMode && { createdBy: currentUserId })
       };
-
-      // Add plan fields only for new manager creation
-      if (!editMode) {
-        userData.planType = formData.planType;
-        userData.startDate = formData.planStartDate ? new Date(formData.planStartDate).toISOString() : null;
-        userData.expiryDate = formData.planEndDate ? new Date(formData.planEndDate).toISOString() : null;
-        userData.password = formData.password;
-        userData.amount = formData.amount;
-      }
 
       let result;
 
       // Call the appropriate API
       if (editMode) {
+        userData.status = formData.status;
+        userData.businessName = formData.businessName;
         result = await updateUserAPI(userData);
       } else {
+        // Add plan fields for new manager creation
+        userData.planType = formData.planType;
+        userData.startDate = formData.planStartDate ? new Date(formData.planStartDate).toISOString() : null;
+        userData.expiryDate = formData.planEndDate ? new Date(formData.planEndDate).toISOString() : null;
+        userData.password = formData.password;
+        userData.amount = parseFloat(formData.amount) || 0;
+        
         result = await createUserAPI(userData);
+        
+        // Create store for the manager
+        const storeData = {
+          name: formData.businessName,
+          address: formData.businessAddress,
+          phoneNumber: formData.phone,
+          email: formData.email,
+          creditLimit: 50000.0,
+          currentCredit: 0,
+          managerId: result.userId || result.data?.id,
+          adminId: currentUserId,
+          isActive: true
+        };
+        
+        await createStore(storeData);
       }
-
-      // Create manager object for localStorage (keeping for backward compatibility)
-      const manager = {
-        id: editMode ? managerToEdit.id : result.userId || Date.now(),
-        ...formData,
-        userId: result.userId,
-        status: formData.status || 'Active',
-        maxOutlet: formData.limits.maxOutlet || 1,
-        createdAt: editMode ? managerToEdit.createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        daysRemaining: formData.planEndDate ?
-          Math.ceil((new Date(formData.planEndDate) - new Date()) / (1000 * 60 * 60 * 24)) : null,
-        profileImage: formData.profileImagePath,
-        businessLogo: formData.businessLogoPath
-      };
-
-      // Update localStorage
-      const managers = JSON.parse(localStorage.getItem('managers') || '[]');
-
-      if (editMode) {
-        const index = managers.findIndex(a => a.id === managerToEdit.id);
-        if (index !== -1) {
-          managers[index] = manager;
-        }
-      } else {
-        managers.push(manager);
-      }
-
-      localStorage.setItem('managers', JSON.stringify(managers));
 
       // Add to recent activity
       const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
       activity.unshift({
         business: formData.businessName,
         description: editMode ? "Manager account updated" : "New manager account created",
-        time: "Just now",
+        time: new Date().toLocaleString(),
         type: editMode ? "updated" : "created"
       });
       localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
@@ -445,7 +475,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
       setCurrentView('manager-management');
     } catch (error) {
       console.error('Error submitting form:', error);
-      alert(`Failed to ${editMode ? 'update' : 'create'} manager account: ${error.message || 'Please try again.'}`);
+      alert(`Failed to ${editMode ? 'update' : 'create'} manager account: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -455,7 +485,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
     <div className="max-w-4xl mx-auto">
       <button
         onClick={() => setCurrentView('manager-management')}
-        className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
+        className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
       >
         <ArrowLeft className="h-5 w-5 mr-2" />
         Back to Manager Management
@@ -471,7 +501,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Profile Image Upload */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Images</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -482,7 +512,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewImage ? (
-                    <div className="relative">
+                    <div className="relative inline-block">
                       <img
                         src={previewImage}
                         alt="Profile Preview"
@@ -491,7 +521,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                       <button
                         type="button"
                         onClick={() => removeImage('profile')}
-                        className="absolute top-0 right-1/4 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                         disabled={isUploading}
                       >
                         <X className="h-4 w-4" />
@@ -507,7 +537,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => handleImageUpload(e, 'profile')}
                     className="hidden"
                     id="profileImage"
@@ -515,7 +545,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   />
                   <label
                     htmlFor="profileImage"
-                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Upload className="h-4 w-4 inline mr-2" />
                     {isUploading ? 'Uploading...' : 'Upload Image'}
@@ -530,7 +560,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewLogo ? (
-                    <div className="relative">
+                    <div className="relative inline-block">
                       <img
                         src={previewLogo}
                         alt="Logo Preview"
@@ -539,7 +569,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                       <button
                         type="button"
                         onClick={() => removeImage('logo')}
-                        className="absolute top-0 right-1/4 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                         disabled={isUploading}
                       >
                         <X className="h-4 w-4" />
@@ -555,7 +585,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => handleImageUpload(e, 'logo')}
                     className="hidden"
                     id="businessLogo"
@@ -563,7 +593,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   />
                   <label
                     htmlFor="businessLogo"
-                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Upload className="h-4 w-4 inline mr-2" />
                     {isUploading ? 'Uploading...' : 'Upload Logo'}
@@ -571,10 +601,10 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </div>
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Business Details */}
-          <section>
+          <div>
             <div className="flex items-center mb-4">
               <Building className="h-5 w-5 text-gray-400 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Business Details</h2>
@@ -591,9 +621,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   value={formData.businessName}
                   onChange={handleInputChange}
                   placeholder="e.g., IceCool Pvt Ltd"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.businessName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.businessName && (
+                  <p className="mt-1 text-sm text-red-500">{errors.businessName}</p>
+                )}
               </div>
 
               <div>
@@ -613,10 +645,66 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </select>
               </div>
             </div>
-          </section>
 
-          {/* Manager User Details */}
-          <section>
+            {/* Registration Details Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Office Address
+                </label>
+                <input
+                  type="text"
+                  name="officeAddress"
+                  value={formData.officeAddress}
+                  onChange={handleInputChange}
+                  placeholder="Full office address"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  FSSAI Number
+                </label>
+                <input
+                  type="text"
+                  name="FSSAI_No"
+                  value={formData.FSSAI_No}
+                  onChange={handleInputChange}
+                  placeholder="FSSAI registration number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  GST Number
+                </label>
+                <input
+                  type="text"
+                  name="GST_No"
+                  value={formData.GST_No}
+                  onChange={handleInputChange}
+                  placeholder="GST identification number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  CIN Number
+                </label>
+                <input
+                  type="text"
+                  name="CIN_No"
+                  value={formData.CIN_No}
+                  onChange={handleInputChange}
+                  placeholder="Company Identification Number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Manager Details */}
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Manager Details</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -630,9 +718,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   value={formData.managerName}
                   onChange={handleInputChange}
                   placeholder="Full name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.managerName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.managerName && (
+                  <p className="mt-1 text-sm text-red-500">{errors.managerName}</p>
+                )}
               </div>
 
               <div>
@@ -645,9 +735,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   value={formData.phone}
                   onChange={handleInputChange}
                   placeholder="+91 98765 43210"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.phone && (
+                  <p className="mt-1 text-sm text-red-500">{errors.phone}</p>
+                )}
               </div>
 
               <div>
@@ -660,19 +752,23 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder="manager@business.com"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-500">{errors.email}</p>
+                )}
               </div>
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address
+                  Business Address
                 </label>
                 <textarea
-                  type="text"
                   name="businessAddress"
                   value={formData.businessAddress}
                   onChange={handleInputChange}
-                  placeholder="Address"
+                  placeholder="Business address"
+                  rows="3"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -697,11 +793,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </div>
               )}
             </div>
-          </section>
+          </div>
 
           {/* Login Credentials - Only for Create Mode */}
           {!editMode && (
-            <section>
+            <div>
               <div className="flex items-center mb-4">
                 <Key className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Login Credentials</h2>
@@ -748,7 +844,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                         type="button"
                         onClick={generatePassword}
                         disabled={isGenerating || isSubmitting}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                       >
                         {isGenerating ? 'Generating...' : 'Generate Password'}
                       </button>
@@ -775,18 +871,20 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                       value={formData.password}
                       onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                       placeholder="Enter password"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required={!editMode}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.password && (
+                      <p className="mt-1 text-sm text-red-500">{errors.password}</p>
+                    )}
                   </div>
                 )}
               </div>
-            </section>
+            </div>
           )}
 
           {/* Subscription Plan - Only for Create Mode */}
           {!editMode && (
-            <section>
+            <div>
               <div className="flex items-center mb-4">
                 <Calendar className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Subscription Plan</h2>
@@ -801,14 +899,16 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                     name="planType"
                     value={formData.planType}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.planType ? 'border-red-500' : 'border-gray-300'}`}
                   >
                     <option value="">Select plan</option>
                     {planTypes.map(plan => (
                       <option key={plan.value} value={plan.value}>{plan.label}</option>
                     ))}
                   </select>
+                  {errors.planType && (
+                    <p className="mt-1 text-sm text-red-500">{errors.planType}</p>
+                  )}
                 </div>
 
                 <div>
@@ -820,9 +920,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                     name="planStartDate"
                     value={formData.planStartDate}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.planStartDate ? 'border-red-500' : 'border-gray-300'}`}
                   />
+                  {errors.planStartDate && (
+                    <p className="mt-1 text-sm text-red-500">{errors.planStartDate}</p>
+                  )}
                 </div>
 
                 <div>
@@ -833,15 +935,15 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                     type="date"
                     value={formData.planEndDate}
                     readOnly
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed"
                   />
                 </div>
               </div>
-            </section>
+            </div>
           )}
 
           {/* Usage Limits */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Usage Limits</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -858,10 +960,10 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 />
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Feature Selection */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Feature & Sidebar Selection
             </h2>
@@ -871,7 +973,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {featuresList.map(feature => (
-                <div key={feature.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                <div key={feature.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                   <input
                     type="checkbox"
                     id={feature.id}
@@ -885,10 +987,11 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                 </div>
               ))}
             </div>
-          </section>
+          </div>
 
+          {/* Amount Field - Only for Create Mode */}
           {!editMode && (
-            <section>
+            <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -898,23 +1001,25 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
                   </label>
                   <input
                     type="number"
-                    name='amount'
+                    name="amount"
                     value={formData.amount}
                     onChange={handleInputChange}
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
               </div>
-            </section>
+            </div>
           )}
-
 
           {/* Form Actions */}
           <div className="flex justify-end space-x-4 pt-6 border-t">
             <button
               type="button"
               onClick={() => setCurrentView('manager-management')}
-              className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
               disabled={isSubmitting}
             >
               Cancel
@@ -922,7 +1027,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
             <button
               type="submit"
               disabled={isSubmitting || isUploading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Submitting...' : (editMode ? 'Update Manager Account' : 'Create Manager Account')}
             </button>

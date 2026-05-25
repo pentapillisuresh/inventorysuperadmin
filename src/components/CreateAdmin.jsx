@@ -26,12 +26,16 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
     limits: {
       maxStores: 5,
     },
-    amount:0,
+    amount: 0,
     profileImage: null,
     profileImagePath: '',
     businessLogo: null,
     businessLogoPath: '',
-    status: 'Active'
+    status: 'Active',
+    officeAddress: '',
+    FSSAI_No: '',
+    GST_No: '',
+    CIN_No: ''
   });
   
   const clientToken = localStorage.getItem('token');
@@ -43,6 +47,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
   const [previewLogo, setPreviewLogo] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
   
   const fileInputRef = useRef(null);
   const logoInputRef = useRef(null);
@@ -79,9 +84,19 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
     if (editMode && adminToEdit) {
       console.log("adminToEdit:", adminToEdit);
       
+      // Safely parse permissions
+      let parsedPermissions = {};
+      try {
+        parsedPermissions = typeof adminToEdit.permissions === 'string' 
+          ? JSON.parse(adminToEdit.permissions) 
+          : (adminToEdit.permissions || {});
+      } catch (error) {
+        console.error('Error parsing permissions:', error);
+      }
+
       const formattedFeatures = {};
       featuresList.forEach(feature => {
-        formattedFeatures[feature.id] = !!adminToEdit.permissions?.[feature.id];
+        formattedFeatures[feature.id] = parsedPermissions[feature.id] || false;
       });
 
       setFormData({
@@ -97,11 +112,16 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
         planEndDate: adminToEdit.planEndDate ? adminToEdit.planEndDate.split('T')[0] : '',
         features: formattedFeatures,
         limits: { maxStores: adminToEdit.maxStores || 5 },
+        amount: adminToEdit.amount || 0,
         profileImage: null,
         profileImagePath: adminToEdit.profileImage || adminToEdit.BusinessImage || '',
         businessLogo: null,
         businessLogoPath: adminToEdit.businessLogo || adminToEdit.BusinessLogo || '',
-        status: adminToEdit.status || (adminToEdit.isActive ? 'Active' : 'Inactive')
+        status: adminToEdit.status || (adminToEdit.isActive ? 'Active' : 'Inactive'),
+        officeAddress: adminToEdit.officeAddress || '',
+        FSSAI_No: adminToEdit.FSSAI_No || '',
+        GST_No: adminToEdit.GST_No || '',
+        CIN_No: adminToEdit.CIN_No || ''
       });
 
       if (adminToEdit.profileImage || adminToEdit.BusinessImage) {
@@ -129,6 +149,10 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleFeatureToggle = (featureId) => {
@@ -152,18 +176,18 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
   };
 
   const uploadImage = async (file) => {
-    const formData = new FormData();
-    formData.append('image', file);
+    const uploadFormData = new FormData();
+    uploadFormData.append('image', file);
 
     try {
-      const response = await ApiService.post('/upload/upload-Image', formData, {
+      const response = await ApiService.post('/upload/upload-Image', uploadFormData, {
         headers: {
           Authorization: `Bearer ${clientToken}`,
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      if (!response) {
+      if (!response || !response.imagePath) {
         throw new Error('Image upload failed');
       }
 
@@ -177,6 +201,13 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
   const handleImageUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (JPEG, PNG, or WEBP)');
+      return;
+    }
 
     if (file.size > 5 * 1024 * 1024) { // 5MB limit
       alert('File size must be less than 5MB');
@@ -241,6 +272,8 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
     if (!startDate || !planType) return '';
     
     const start = new Date(startDate);
+    if (isNaN(start.getTime())) return '';
+    
     const end = new Date(start);
     
     switch(planType) {
@@ -266,6 +299,45 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
       setFormData(prev => ({ ...prev, planEndDate: endDate }));
     }
   }, [formData.planStartDate, formData.planType, editMode]);
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.businessName.trim()) {
+      newErrors.businessName = 'Business name is required';
+    }
+
+    if (!formData.adminName.trim()) {
+      newErrors.adminName = 'Admin name is required';
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^\+?[0-9]{10,15}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Please enter a valid phone number';
+    }
+
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    if (!editMode) {
+      if (!formData.planType) {
+        newErrors.planType = 'Plan type is required';
+      }
+
+      if (!formData.planStartDate) {
+        newErrors.planStartDate = 'Plan start date is required';
+      }
+
+      if (!formData.password) {
+        newErrors.password = 'Password is required';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const createUserAPI = async (userData) => {
     try {
@@ -302,21 +374,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate required fields
-    if (!formData.businessName || !formData.adminName || !formData.phone) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    // Validate plan fields for new admin
-    if (!editMode && (!formData.planType || !formData.planStartDate)) {
-      alert('Please select plan type and start date');
-      return;
-    }
-
-    // Validate password for new admin
-    if (!editMode && !formData.password) {
-      alert('Please generate or enter a password');
+    if (!validateForm()) {
       return;
     }
 
@@ -334,10 +392,10 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
         create_outlets: formData.features.create_outlets || false
       };
 
-      // Base user data object according to the model
+      // Base user data object
       const userData = {
         name: formData.adminName,
-        email: formData.email || `${formData.phone}@temp.com`, // Fallback email if not provided
+        email: formData.email || `${formData.phone}@temp.com`,
         phoneNumber: formData.phone,
         role: "admin",
         maxStores: formData.limits.maxStores || 1,
@@ -345,8 +403,10 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
         BusinessImage: formData.profileImagePath || '',
         BusinessLogo: formData.businessLogoPath || '',
         businessType: formData.businessType || null,
-        // Add createdBy for new admin
-        ...(!editMode && { createdBy: currentUserId })
+        officeAddress: formData.officeAddress || '',
+        FSSAI_No: formData.FSSAI_No || '',
+        GST_No: formData.GST_No || '',
+        CIN_No: formData.CIN_No || ''
       };
 
       // Add plan fields only for new admin creation
@@ -355,7 +415,12 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
         userData.startDate = formData.planStartDate ? new Date(formData.planStartDate).toISOString() : null;
         userData.expiryDate = formData.planEndDate ? new Date(formData.planEndDate).toISOString() : null;
         userData.password = formData.password;
-        userData.amount = formData.amount;
+        userData.amount = parseFloat(formData.amount) || 0;
+        userData.createdBy = currentUserId;
+      } else {
+        // For edit mode, include status and other updatable fields
+        userData.status = formData.status;
+        userData.businessName = formData.businessName;
       }
 
       let result;
@@ -367,41 +432,12 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
         result = await createUserAPI(userData);
       }
 
-      // Create admin object for localStorage (keeping for backward compatibility)
-      const admin = {
-        id: editMode ? adminToEdit.id : result.userId || Date.now(),
-        ...formData,
-        userId: result.userId,
-        status: formData.status || 'Active',
-        maxStores: formData.limits.maxStores || 1,
-        createdAt: editMode ? adminToEdit.createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        daysRemaining: formData.planEndDate ? 
-          Math.ceil((new Date(formData.planEndDate) - new Date()) / (1000 * 60 * 60 * 24)) : null,
-        profileImage: formData.profileImagePath,
-        businessLogo: formData.businessLogoPath
-      };
-
-      // Update localStorage
-      const admins = JSON.parse(localStorage.getItem('admins') || '[]');
-      
-      if (editMode) {
-        const index = admins.findIndex(a => a.id === adminToEdit.id);
-        if (index !== -1) {
-          admins[index] = admin;
-        }
-      } else {
-        admins.push(admin);
-      }
-      
-      localStorage.setItem('admins', JSON.stringify(admins));
-
       // Add to recent activity
       const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
       activity.unshift({
         business: formData.businessName,
         description: editMode ? "Admin account updated" : "New admin account created",
-        time: "Just now",
+        time: new Date().toLocaleString(),
         type: editMode ? "updated" : "created"
       });
       localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
@@ -410,7 +446,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
       setCurrentView('admin-management');
     } catch (error) {
       console.error('Error submitting form:', error);
-      alert(`Failed to ${editMode ? 'update' : 'create'} admin account: ${error.message || 'Please try again.'}`);
+      alert(`Failed to ${editMode ? 'update' : 'create'} admin account: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -420,7 +456,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
     <div className="max-w-4xl mx-auto">
       <button
         onClick={() => setCurrentView('admin-management')}
-        className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
+        className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
       >
         <ArrowLeft className="h-5 w-5 mr-2" />
         Back to Admin Management
@@ -436,7 +472,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Profile Image Upload */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Images</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -447,7 +483,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewImage ? (
-                    <div className="relative">
+                    <div className="relative inline-block">
                       <img 
                         src={previewImage} 
                         alt="Profile Preview" 
@@ -456,7 +492,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                       <button
                         type="button"
                         onClick={() => removeImage('profile')}
-                        className="absolute top-0 right-1/4 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                         disabled={isUploading}
                       >
                         <X className="h-4 w-4" />
@@ -472,7 +508,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => handleImageUpload(e, 'profile')}
                     className="hidden"
                     id="profileImage"
@@ -480,7 +516,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   />
                   <label
                     htmlFor="profileImage"
-                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Upload className="h-4 w-4 inline mr-2" />
                     {isUploading ? 'Uploading...' : 'Upload Image'}
@@ -495,7 +531,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors">
                   {previewLogo ? (
-                    <div className="relative">
+                    <div className="relative inline-block">
                       <img 
                         src={previewLogo} 
                         alt="Logo Preview" 
@@ -504,7 +540,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                       <button
                         type="button"
                         onClick={() => removeImage('logo')}
-                        className="absolute top-0 right-1/4 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                         disabled={isUploading}
                       >
                         <X className="h-4 w-4" />
@@ -520,7 +556,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => handleImageUpload(e, 'logo')}
                     className="hidden"
                     id="businessLogo"
@@ -528,7 +564,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   />
                   <label
                     htmlFor="businessLogo"
-                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Upload className="h-4 w-4 inline mr-2" />
                     {isUploading ? 'Uploading...' : 'Upload Logo'}
@@ -536,10 +572,10 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </div>
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Business Details */}
-          <section>
+          <div>
             <div className="flex items-center mb-4">
               <Building className="h-5 w-5 text-gray-400 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Business Details</h2>
@@ -556,9 +592,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   value={formData.businessName}
                   onChange={handleInputChange}
                   placeholder="e.g., IceCool Pvt Ltd"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.businessName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.businessName && (
+                  <p className="mt-1 text-sm text-red-500">{errors.businessName}</p>
+                )}
               </div>
               
               <div>
@@ -578,10 +616,66 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </select>
               </div>
             </div>
-          </section>
+
+            {/* Address and Registration Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Office Address
+                </label>
+                <input
+                  type="text"
+                  name="officeAddress"
+                  value={formData.officeAddress}
+                  onChange={handleInputChange}
+                  placeholder="Full office address"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  FSSAI Number
+                </label>
+                <input
+                  type="text"
+                  name="FSSAI_No"
+                  value={formData.FSSAI_No}
+                  onChange={handleInputChange}
+                  placeholder="FSSAI registration number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  GST Number
+                </label>
+                <input
+                  type="text"
+                  name="GST_No"
+                  value={formData.GST_No}
+                  onChange={handleInputChange}
+                  placeholder="GST identification number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  CIN Number
+                </label>
+                <input
+                  type="text"
+                  name="CIN_No"
+                  value={formData.CIN_No}
+                  onChange={handleInputChange}
+                  placeholder="Company Identification Number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Admin User Details */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Admin User Details</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -595,9 +689,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   value={formData.adminName}
                   onChange={handleInputChange}
                   placeholder="Full name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.adminName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.adminName && (
+                  <p className="mt-1 text-sm text-red-500">{errors.adminName}</p>
+                )}
               </div>
               
               <div>
@@ -610,9 +706,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   value={formData.phone}
                   onChange={handleInputChange}
                   placeholder="+91 98765 43210"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.phone && (
+                  <p className="mt-1 text-sm text-red-500">{errors.phone}</p>
+                )}
               </div>
 
               <div>
@@ -625,8 +723,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder="admin@business.com"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-500">{errors.email}</p>
+                )}
               </div>
 
               {/* Status Field (only in edit mode) */}
@@ -649,11 +750,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </div>
               )}
             </div>
-          </section>
+          </div>
 
           {/* Login Credentials - Only for Create Mode */}
           {!editMode && (
-            <section>
+            <div>
               <div className="flex items-center mb-4">
                 <Key className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Login Credentials</h2>
@@ -700,7 +801,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                         type="button"
                         onClick={generatePassword}
                         disabled={isGenerating || isSubmitting}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                       >
                         {isGenerating ? 'Generating...' : 'Generate Password'}
                       </button>
@@ -727,18 +828,20 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                       value={formData.password}
                       onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                       placeholder="Enter password"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required={!editMode}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.password && (
+                      <p className="mt-1 text-sm text-red-500">{errors.password}</p>
+                    )}
                   </div>
                 )}
               </div>
-            </section>
+            </div>
           )}
 
           {/* Subscription Plan - Only for Create Mode */}
           {!editMode && (
-            <section>
+            <div>
               <div className="flex items-center mb-4">
                 <Calendar className="h-5 w-5 text-gray-400 mr-2" />
                 <h2 className="text-lg font-semibold text-gray-900">Subscription Plan</h2>
@@ -753,14 +856,16 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                     name="planType"
                     value={formData.planType}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.planType ? 'border-red-500' : 'border-gray-300'}`}
                   >
                     <option value="">Select plan</option>
                     {planTypes.map(plan => (
                       <option key={plan.value} value={plan.value}>{plan.label}</option>
                     ))}
                   </select>
+                  {errors.planType && (
+                    <p className="mt-1 text-sm text-red-500">{errors.planType}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -772,9 +877,11 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                     name="planStartDate"
                     value={formData.planStartDate}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.planStartDate ? 'border-red-500' : 'border-gray-300'}`}
                   />
+                  {errors.planStartDate && (
+                    <p className="mt-1 text-sm text-red-500">{errors.planStartDate}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -785,15 +892,15 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                     type="date"
                     value={formData.planEndDate}
                     readOnly
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed"
                   />
                 </div>
               </div>
-            </section>
+            </div>
           )}
 
           {/* Usage Limits */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Usage Limits</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -810,10 +917,10 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 />
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Feature Selection */}
-          <section>
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Feature & Sidebar Selection
             </h2>
@@ -823,7 +930,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {featuresList.map(feature => (
-                <div key={feature.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                <div key={feature.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                   <input
                     type="checkbox"
                     id={feature.id}
@@ -837,27 +944,31 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
                 </div>
               ))}
             </div>
-          </section>
+          </div>
 
+          {/* Amount Field - Only for Create Mode */}
           {!editMode && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                 Amount
-                </label>
-                <input
-                  type="number"
-                  name='amount'
-                  value={formData.amount}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Amount</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    value={formData.amount}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
-          </section>
           )}
 
           {/* Form Actions */}
@@ -865,7 +976,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
             <button
               type="button"
               onClick={() => setCurrentView('admin-management')}
-              className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
               disabled={isSubmitting}
             >
               Cancel
@@ -873,7 +984,7 @@ const CreateAdmin = ({ setCurrentView, editMode = false, adminToEdit = null }) =
             <button
               type="submit"
               disabled={isSubmitting || isUploading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Submitting...' : (editMode ? 'Update Admin Account' : 'Create Admin Account')}
             </button>

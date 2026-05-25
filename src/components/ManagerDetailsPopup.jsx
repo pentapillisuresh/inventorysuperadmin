@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import ApiService from '../utils/ApiService';
 
-const ManagerDetailsPopup = ({ manager, onClose }) => {
+const ManagerDetailsPopup = ({ manager, onClose, onRenewSuccess }) => {
   console.log("manager::", manager);
   
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -17,35 +17,35 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
     planType: manager.planType || 'Monthly',
     startDate: '',
     expiryDate: '',
-    amount:0
+    amount: 0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatDateForInput = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   };
 
   const getStatusIcon = (status) => {
-    switch(status) {
-      case 'Active':
+    switch(status?.toLowerCase()) {
+      case 'active':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'Inactive':
+      case 'inactive':
         return <XCircle className="h-5 w-5 text-gray-500" />;
-      case 'Blocked':
+      case 'blocked':
         return <AlertCircle className="h-5 w-5 text-red-500" />;
       default:
         return <AlertCircle className="h-5 w-5 text-amber-500" />;
@@ -53,15 +53,18 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
   };
 
   const getPlanColor = (planType) => {
-    switch(planType) {
-      case 'Yearly': return 'bg-blue-100 text-blue-800';
-      case 'Monthly': return 'bg-green-100 text-green-800';
-      case 'Trial': return 'bg-amber-100 text-amber-800';
-      default: return 'bg-gray-100 text-gray-800';
+    switch(planType?.toLowerCase()) {
+      case 'yearly': 
+        return 'bg-blue-100 text-blue-800';
+      case 'monthly': 
+        return 'bg-green-100 text-green-800';
+      case 'trial': 
+        return 'bg-amber-100 text-amber-800';
+      default: 
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
-  // Safe ID display function
   const getDisplayId = (id) => {
     if (!id) return 'N/A';
     const idStr = String(id);
@@ -77,22 +80,91 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
     setNewPassword(password);
   };
 
-  const handleResetPassword = () => {
-    if (newPassword) {
-      alert(`Password reset for ${manager.managerName} to: ${newPassword}`);
-      setShowResetPassword(false);
-      setNewPassword('');
+  const handleResetPassword = async () => {
+    if (!newPassword) {
+      alert('Please generate a password first');
+      return;
+    }
+
+    setIsResettingPassword(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await ApiService.put(`/users/store-managers/${manager.id}/reset-password`, 
+        { password: newPassword },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response) {
+        alert(`Password reset successfully for ${manager.managerName}`);
+        setShowResetPassword(false);
+        setNewPassword('');
+        
+        // Add to recent activity
+        const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
+        activity.unshift({
+          business: manager.adminBusiness,
+          description: `Password reset for manager ${manager.managerName}`,
+          time: new Date().toLocaleString(),
+          type: "updated"
+        });
+        localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
+      }
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      alert(`Failed to reset password: ${error.response?.data?.message || error.message || 'Please try again.'}`);
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
-  const handleStatusChange = (newStatus) => {
+  const handleStatusChange = async (newStatus) => {
     const confirmMessage = newStatus === 'Blocked' 
       ? `Are you sure you want to block ${manager.managerName}? They will lose access to the system.`
       : `Are you sure you want to ${newStatus === 'Active' ? 'activate' : 'deactivate'} ${manager.managerName}?`;
 
-    if (window.confirm(confirmMessage)) {
-      alert(`Manager status changed to ${newStatus}`);
-      // In real app, update in localStorage/backend
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await ApiService.put(`/users/store-managers/${manager.id}/status`, 
+        { status: newStatus },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response) {
+        alert(`Manager status changed to ${newStatus}`);
+        
+        // Add to recent activity
+        const activity = JSON.parse(localStorage.getItem('recentActivity') || '[]');
+        activity.unshift({
+          business: manager.adminBusiness,
+          description: `Manager ${manager.managerName} status changed to ${newStatus}`,
+          time: new Date().toLocaleString(),
+          type: "updated"
+        });
+        localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
+        
+        // Refresh or update the manager data
+        if (onRenewSuccess) {
+          onRenewSuccess();
+        }
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert(`Failed to update status: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     }
   };
 
@@ -100,6 +172,8 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
     if (!startDate || !planType) return '';
     
     const start = new Date(startDate);
+    if (isNaN(start.getTime())) return '';
+    
     const end = new Date(start);
     
     switch(planType) {
@@ -124,7 +198,6 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
     setRenewFormData(prev => {
       const updated = { ...prev, [name]: value };
       
-      // Calculate expiry date when start date or plan type changes
       if (name === 'startDate' || name === 'planType') {
         if (updated.startDate && updated.planType) {
           updated.expiryDate = calculateExpiryDate(updated.startDate, updated.planType);
@@ -135,9 +208,13 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
   };
 
   const handleRenewSubmit = async () => {
-    // Validate form
     if (!renewFormData.planType || !renewFormData.startDate) {
       alert('Please select plan type and start date');
+      return;
+    }
+
+    if (renewFormData.amount <= 0) {
+      alert('Please enter a valid amount');
       return;
     }
 
@@ -150,10 +227,10 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
         startDate: new Date(renewFormData.startDate).toISOString(),
         expiryDate: renewFormData.expiryDate ? new Date(renewFormData.expiryDate).toISOString() : null,
         planType: renewFormData.planType,
-        amount:renewFormData.amount
+        amount: parseFloat(renewFormData.amount)
       };
 
-      const response = await ApiService.put(`users/admins/${manager.id}/renew`, requestData, {
+      const response = await ApiService.put(`/users/store-managers/${manager.id}/renew`, requestData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -169,17 +246,19 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
         activity.unshift({
           business: manager.adminBusiness,
           description: `Plan renewed for manager ${manager.managerName}: ${renewFormData.planType} plan`,
-          time: "Just now",
+          time: new Date().toLocaleString(),
           type: "updated"
         });
         localStorage.setItem('recentActivity', JSON.stringify(activity.slice(0, 20)));
         
-        // Refresh the page or update manager data
-        // window.location.reload(); // Simple refresh to show updated data
+        // Call success callback if provided
+        if (onRenewSuccess) {
+          onRenewSuccess();
+        }
       }
     } catch (error) {
       console.error('Error renewing plan:', error);
-      alert(`Failed to renew plan: ${error.message || 'Please try again.'}`);
+      alert(`Failed to renew plan: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -211,6 +290,23 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
     create_outlets: 'Create Outlets'
   };
 
+  // Safely parse permissions
+  const getPermissions = () => {
+    try {
+      if (manager.permissions) {
+        return typeof manager.permissions === 'string' 
+          ? JSON.parse(manager.permissions) 
+          : manager.permissions;
+      }
+      return {};
+    } catch (error) {
+      console.error('Error parsing permissions:', error);
+      return {};
+    }
+  };
+
+  const permissions = getPermissions();
+
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -221,7 +317,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
               <div>
                 <h2 className="text-2xl font-bold">{manager.managerName || 'Unknown Manager'}</h2>
                 <p className="text-blue-100 mt-1">Manager Account Details</p>
-                <div className="flex items-center space-x-3 mt-3">
+                <div className="flex flex-wrap items-center gap-3 mt-3">
                   <div className="flex items-center">
                     {getStatusIcon(manager.status)}
                     <span className="ml-2 font-medium">{manager.status || 'Unknown'}</span>
@@ -237,12 +333,13 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
               <button
                 onClick={onClose}
                 className="text-white hover:text-blue-200 transition-colors"
+                aria-label="Close"
               >
                 <X className="h-6 w-6" />
               </button>
             </div>
             
-            {manager.daysRemaining && (
+            {manager.daysRemaining && manager.daysRemaining > 0 && (
               <div className="flex items-center text-blue-100 mt-2">
                 <Clock className="h-4 w-4 mr-1" />
                 <span>{manager.daysRemaining} days remaining in current plan</span>
@@ -262,11 +359,11 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-gray-500">Full Name</p>
-                      <p className="font-medium">{manager.managerName || 'N/A'}</p>
+                      <p className="font-medium">{manager.managerName || manager.name || 'N/A'}</p>
                     </div>
                     <div className="flex items-center">
                       <Phone className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="font-medium">{manager.phone || 'N/A'}</span>
+                      <span className="font-medium">{manager.phone || manager.phoneNumber || 'N/A'}</span>
                     </div>
                     {manager.email && (
                       <div className="flex items-center">
@@ -289,14 +386,18 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-gray-500">Business Name</p>
-                      <p className="font-medium">{manager.adminBusiness || 'Unknown'}</p>
-                      <p className="text-sm text-gray-500 mt-1">Plan: {manager.adminPlan || 'Unknown'}</p>
+                      <p className="font-medium">{manager.adminBusiness || manager.businessName || 'Unknown'}</p>
+                      {manager.adminPlan && (
+                        <p className="text-sm text-gray-500 mt-1">Admin Plan: {manager.adminPlan}</p>
+                      )}
                     </div>
                     <div className="flex items-start">
                       <Store className="h-4 w-4 text-gray-400 mr-2 mt-1" />
                       <div>
                         <p className="font-medium">{manager.storeName || 'Not Assigned'}</p>
-                        <p className="text-sm text-gray-500">Store ID: {getDisplayId(manager.storeId)}</p>
+                        {manager.storeId && (
+                          <p className="text-sm text-gray-500">Store ID: {getDisplayId(manager.storeId)}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -330,17 +431,21 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
               {/* Permissions & Access */}
               <div className="bg-gray-50 p-5 rounded-xl">
                 <h3 className="font-semibold text-gray-900 mb-4">Manager Permissions</h3>
-                {manager.permissions && Object.keys(manager.permissions).length > 0 ? (
+                {Object.keys(permissions).length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.entries(manager.permissions).map(([feature, enabled]) => {
+                    {Object.entries(permissions).map(([feature, enabled]) => {
                       const Icon = featureIcons[feature] || ShoppingBag;
                       return (
                         <div 
                           key={feature} 
-                          className={`flex items-center p-3 rounded-lg border ${enabled ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50 opacity-50'}`}
+                          className={`flex items-center p-3 rounded-lg border ${
+                            enabled ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50 opacity-50'
+                          }`}
                         >
                           <Icon className="h-5 w-5 mr-3 text-gray-500" />
-                          <span className="font-medium text-gray-700">{featureLabels[feature] || feature}</span>
+                          <span className="font-medium text-gray-700">
+                            {featureLabels[feature] || feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
                           <div className="ml-auto">
                             {enabled ? (
                               <CheckCircle className="h-5 w-5 text-green-500" />
@@ -354,7 +459,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                   </div>
                 ) : (
                   <div className="bg-white p-4 rounded-lg border">
-                    <h4 className="font-medium text-gray-900 mb-2">Store Access</h4>
+                    <h4 className="font-medium text-gray-900 mb-2">Default Store Access</h4>
                     <ul className="text-sm text-gray-600 space-y-1">
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
@@ -383,7 +488,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     </div>
                     <button
                       onClick={() => setShowResetPassword(!showResetPassword)}
-                      className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+                      className="flex items-center text-sm text-blue-600 hover:text-blue-800 transition-colors"
                     >
                       <Key className="h-4 w-4 mr-1" />
                       Reset Password
@@ -402,7 +507,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     <div>
                       <p className="text-sm text-gray-500">Password Method</p>
                       <p className="font-medium text-gray-900">
-                        {manager.passwordMethod === 'auto' ? 'Auto-generated' : 'Manual' || 'Unknown'}
+                        {manager.passwordMethod === 'auto' ? 'Auto-generated' : manager.passwordMethod === 'manual' ? 'Manual' : 'Unknown'}
                       </p>
                     </div>
                     <div>
@@ -430,29 +535,35 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                             type="text"
                             value={newPassword}
                             readOnly
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-mono"
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-mono bg-white"
                             placeholder="Generate new password"
                           />
                           <button
+                            type="button"
                             onClick={generatePassword}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                           >
                             <RefreshCw className="h-4 w-4" />
                           </button>
                         </div>
                         <div className="flex justify-end space-x-3">
                           <button
-                            onClick={() => setShowResetPassword(false)}
-                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                            type="button"
+                            onClick={() => {
+                              setShowResetPassword(false);
+                              setNewPassword('');
+                            }}
+                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                           >
                             Cancel
                           </button>
                           <button
+                            type="button"
                             onClick={handleResetPassword}
-                            disabled={!newPassword}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                            disabled={!newPassword || isResettingPassword}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
-                            Reset Password
+                            {isResettingPassword ? 'Resetting...' : 'Reset Password'}
                           </button>
                         </div>
                       </div>
@@ -479,16 +590,18 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                         <p className="text-xs text-gray-500 mt-1">{formatDate(manager.createdAt)}</p>
                       </div>
                     </div>
-                    <div className="flex items-start">
-                      <div className="p-2 bg-green-100 rounded-lg mr-3">
-                        <Store className="h-4 w-4 text-green-600" />
+                    {manager.storeName && (
+                      <div className="flex items-start">
+                        <div className="p-2 bg-green-100 rounded-lg mr-3">
+                          <Store className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">Store Assigned</p>
+                          <p className="text-sm text-gray-600">Assigned to {manager.storeName}</p>
+                          <p className="text-xs text-gray-500 mt-1">{formatDate(manager.createdAt)}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">Store Assigned</p>
-                        <p className="text-sm text-gray-600">Assigned to {manager.storeName || 'Not Assigned'}</p>
-                        <p className="text-xs text-gray-500 mt-1">{formatDate(manager.createdAt)}</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -497,11 +610,12 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
 
           {/* Footer with Actions */}
           <div className="border-t px-6 py-4 bg-gray-50">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-3">
               <div className="flex space-x-3">
                 <button
+                  type="button"
                   onClick={() => handleStatusChange('Active')}
-                  className={`px-4 py-2 rounded-lg border ${
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
                     manager.status === 'Active'
                       ? 'bg-green-100 text-green-800 border-green-300'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-100'
@@ -510,8 +624,9 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                   Activate
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleStatusChange('Inactive')}
-                  className={`px-4 py-2 rounded-lg border ${
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
                     manager.status === 'Inactive'
                       ? 'bg-gray-100 text-gray-800 border-gray-300'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-100'
@@ -523,17 +638,17 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
               <div className="flex space-x-3">
                 <button
                   onClick={onClose}
-                  className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Close
                 </button>
-                  <button
-                    onClick={() => setShowRenewModal(true)}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Renew Plan
-                  </button>
+                <button
+                  onClick={() => setShowRenewModal(true)}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Renew Plan
+                </button>
               </div>
             </div>
           </div>
@@ -549,7 +664,8 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                 <h3 className="text-xl font-bold text-gray-900">Renew Plan</h3>
                 <button
                   onClick={() => setShowRenewModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Close modal"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -569,7 +685,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     name="planType"
                     value={renewFormData.planType}
                     onChange={handleRenewInputChange}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   >
                     {planTypes.map(plan => (
                       <option key={plan.value} value={plan.value}>{plan.label}</option>
@@ -588,7 +704,7 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     value={renewFormData.startDate}
                     onChange={handleRenewInputChange}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -602,33 +718,36 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                     name="expiryDate"
                     value={renewFormData.expiryDate}
                     readOnly
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Automatically calculated based on plan type and start date
                   </p>
                 </div>
+
                 {/* Amount */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Amount
+                    Amount *
                   </label>
                   <input
                     type="number"
                     name="amount"
                     onChange={handleRenewInputChange}
                     value={renewFormData.amount}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-500"
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                   />
                 </div>
-
               </div>
 
               {/* Modal Actions */}
               <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
                 <button
                   onClick={() => setShowRenewModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                   disabled={isSubmitting}
                 >
                   Cancel
@@ -636,9 +755,16 @@ const ManagerDetailsPopup = ({ manager, onClose }) => {
                 <button
                   onClick={handleRenewSubmit}
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  {isSubmitting ? 'Processing...' : 'Confirm Renewal'}
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Confirm Renewal'
+                  )}
                 </button>
               </div>
             </div>

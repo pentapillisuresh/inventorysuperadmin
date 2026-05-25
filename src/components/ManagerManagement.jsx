@@ -62,7 +62,12 @@ const ManagerManagement = ({ setCurrentView }) => {
           // Get admin info from localStorage
           adminId: manager.createdBy,
           adminBusiness: manager.name,
-          adminPlan: getAdminPlan(manager.createdBy)
+          adminPlan: getAdminPlan(manager.createdBy),
+          officeAddress: manager.officeAddress,
+          FSSAI_No: manager.FSSAI_No,
+          GST_No:  manager.GST_No,
+          CIN_No: manager.CIN_No
+      
         }));
 
         setManagers(transformedManagers);

@@ -56,7 +56,11 @@ const AdminManagement = ({ setCurrentView }) => {
         status: admin.isActive ? 'Active' : 'Inactive',
         permissions: admin.permissions,
         maxStores: admin.maxStores,
-        maxOutlet: admin.maxOutlet
+        maxOutlet: admin.maxOutlet,
+        officeAddress: admin.officeAddress,
+        FSSAI_No: admin.FSSAI_No,
+        GST_No: admin.GST_No,
+        CIN_No: admin.CIN_No
       }));
       
       setAdmins(transformedAdmins);
