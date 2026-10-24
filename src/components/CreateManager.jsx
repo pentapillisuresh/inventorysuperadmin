@@ -352,8 +352,8 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
 
       return response;
     } catch (error) {
-      console.error('Error in createUserAPI:', error);
-      throw error;
+      console.error('Error in createUserAPI:', error.data.error);
+      throw error.data.error;
     }
   };
 
@@ -475,7 +475,7 @@ const CreateManager = ({ setCurrentView, editMode = false, managerToEdit = null 
       setCurrentView('manager-management');
     } catch (error) {
       console.error('Error submitting form:', error);
-      alert(`Failed to ${editMode ? 'update' : 'create'} manager account: ${error.response?.data?.message || error.message || 'Please try again.'}`);
+      alert(`Failed to ${editMode ? 'update' : 'create'} manager account: ${error|| error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }

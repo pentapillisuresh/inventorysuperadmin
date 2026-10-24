@@ -142,6 +142,7 @@ const AdminManagement = ({ setCurrentView }) => {
     if (adminToDelete) {
       try {
         const response = await fetch(`http://localhost:5001/api/users/${adminToDelete.id}`, {
+        // const response = await fetch(`https://service.billmitras.com/api/users/${adminToDelete.id}`, {
           method: 'DELETE',
         });
 

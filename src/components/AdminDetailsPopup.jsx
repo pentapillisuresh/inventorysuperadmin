@@ -148,7 +148,7 @@ const AdminDetailsPopup = ({ admin, onClose, onRenewSuccess }) => {
       }
     } catch (error) {
       console.error('Error renewing plan:', error);
-      alert(`Failed to renew plan: ${error.response?.data?.message || error.message || 'Please try again.'}`);
+      alert(`Failed to renew plan: ${error.response?.data?.error || error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
